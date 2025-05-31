@@ -393,32 +393,33 @@ if (isset($_SESSION['user_id'])) {
             <span class="material-icons-outlined icon-pulse">menu</span>
         </button>
         
-        <nav class="nav-links">
-            <a href="/travel/index.php" class="nav-link <?= $current == 'index.php' ? 'active' : '' ?>">
-                <span class="material-icons-outlined icon-pulse">home</span>
-                <span>Главная</span>
-            </a>
-            <a href="/travel/about.php" class="nav-link <?= $current == 'about.php' ? 'active' : '' ?>">
-                <span class="material-icons-outlined icon-pulse">info</span>
-                <span>О нас</span>
-            </a>
-            <a href="/travel/tours.php" class="nav-link <?= $current == 'tours.php' ? 'active' : '' ?>">
-                <span class="material-icons-outlined icon-pulse">map</span>
-                <span>Туры</span>
-            </a>
-            <a href="/travel/contact.php" class="nav-link <?= $current == 'contact.php' ? 'active' : '' ?>">
-                <span class="material-icons-outlined icon-pulse">mail</span>
-                <span>Контакты</span>
-            </a>
-            <a href="/travel/profile.php" class="nav-link <?= $current == 'profile.php' ? 'active' : '' ?>">
-                <span class="material-icons-outlined icon-pulse">person</span>
-                <span>Профиль</span>
-            </a>
-            <a href="/travel/chat.php" class="nav-link <?= $current == 'chat.php' ? 'active' : '' ?>">
-                <span class="material-icons-outlined icon-pulse">chat</span>
-                <span>Чат</span>
-            </a>
-        </nav>
+       <nav class="nav-links">
+    <a href="index.php" class="nav-link <?= $current == 'index.php' ? 'active' : '' ?>">
+        <span class="material-icons-outlined icon-pulse">home</span>
+        <span>Главная</span>
+    </a>
+    <a href="about.php" class="nav-link <?= $current == 'about.php' ? 'active' : '' ?>">
+        <span class="material-icons-outlined icon-pulse">info</span>
+        <span>О нас</span>
+    </a>
+    <a href="tours.php" class="nav-link <?= $current == 'tours.php' ? 'active' : '' ?>">
+        <span class="material-icons-outlined icon-pulse">map</span>
+        <span>Туры</span>
+    </a>
+    <a href="contact.php" class="nav-link <?= $current == 'contact.php' ? 'active' : '' ?>">
+        <span class="material-icons-outlined icon-pulse">mail</span>
+        <span>Контакты</span>
+    </a>
+    <a href="profile.php" class="nav-link <?= $current == 'profile.php' ? 'active' : '' ?>">
+        <span class="material-icons-outlined icon-pulse">person</span>
+        <span>Профиль</span>
+    </a>
+    <a href="chat.php" class="nav-link <?= $current == 'chat.php' ? 'active' : '' ?>">
+        <span class="material-icons-outlined icon-pulse">chat</span>
+        <span>Чат</span>
+    </a>
+
+</nav>
         
         <?php if(isset($_SESSION['user_id'])): ?>
             <div class="user-email">
@@ -438,6 +439,7 @@ if (isset($_SESSION['user_id'])) {
 </header>
 
 <script>
+    
     // Управление скроллом
 window.addEventListener('scroll', () => {
     const navbar = document.querySelector('.navbar');
