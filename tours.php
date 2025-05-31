@@ -987,9 +987,7 @@ $conn = new mysqli($servername, $username, $password, $dbname);
     </style>
 </head>
 <body>
-<div class="no-style-navbar">
-    <?php require_once $_SERVER['DOCUMENT_ROOT'].'/travel/navbar.php'; ?>
-</div>
+
 
 <div class="container">
     <h1 class="page-title">Наши туры</h1>
