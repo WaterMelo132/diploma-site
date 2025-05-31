@@ -1061,21 +1061,22 @@ $conn = new mysqli($servername, $username, $password, $dbname);
     
     <div id="tourCardsContainer" class="tour-cards-container">
         <?php foreach ($tours as $index => $tour): ?>
-            <div class="tour-card <?php echo $tour['is_promo'] ? 'promo' : ''; ?> card-delay-<?= ($index % 5) + 1 ?>" 
-                 data-id="<?= $tour['id'] ?>" 
-                 data-destination="<?= htmlspecialchars($tour['destination']) ?>" 
-                 data-status="<?= htmlspecialchars($tour['status']) ?>" 
-                 data-price="<?= $tour['discount_price'] ?>">
-                <?php if ($tour['is_promo']): ?>
-                    <span class="promo-badge">Акция!</span>
-                <?php endif; ?>
-                <img 
-                    src="<?= htmlspecialchars($tour['image']) ?>" 
-                    alt="<?= htmlspecialchars($tour['title']) ?>" 
-                    class="tour-image"
-                    loading="lazy"
-                    onerror="this.src='/travel/images/placeholder.jpg'"
-                >
+    <?php error_log('Tour Image Path: ' . $tour['image']); ?>
+    <div class="tour-card <?php echo $tour['is_promo'] ? 'promo' : ''; ?> card-delay-<?= ($index % 5) + 1 ?>" 
+         data-id="<?= $tour['id'] ?>" 
+         data-destination="<?= htmlspecialchars($tour['destination']) ?>" 
+         data-status="<?= htmlspecialchars($tour['status']) ?>" 
+         data-price="<?= $tour['discount_price'] ?>">
+        <?php if ($tour['is_promo']): ?>
+            <span class="promo-badge">Акция!</span>
+        <?php endif; ?>
+        <img 
+            src="<?= htmlspecialchars(ltrim($tour['image'], '/')) ?>" 
+            alt="<?= htmlspecialchars($tour['title']) ?>" 
+            class="tour-image"
+            loading="lazy"
+            onerror="this.src='images/placeholder.jpg'"
+        >
                 <div class="tour-info">
                     <h3 class="tour-title"><?= htmlspecialchars($tour['title']) ?></h3>
                     <div class="tour-destination">
