@@ -1,7 +1,7 @@
 <?php
 header('Permissions-Policy: interest-cohort=()');
 session_start();
-$navbar_path = $_SERVER['DOCUMENT_ROOT'] . '/travel/navbar.php';
+require_once('navbar.php');
 
 
 if (file_exists($navbar_path)) {
