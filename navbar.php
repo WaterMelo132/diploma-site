@@ -1,5 +1,4 @@
 <?php
-// /travel/php/navbar.php
 $current = basename($_SERVER['PHP_SELF']);
 // Подключаем конфигурацию
 require_once __DIR__.'/config.php';

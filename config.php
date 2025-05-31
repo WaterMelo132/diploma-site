@@ -1,7 +1,7 @@
 <?php
-$host = "localhost";
-$user = "root"; // Стандартный пользователь MySQL в XAMPP
-$pass = ""; // Пароль пустой по умолчанию
+$host = "db4free.net";
+$user = "myusername"; // Стандартный пользователь MySQL в XAMPP
+$pass = "EVu-Nec-y2k-rC3"; // Пароль пустой по умолчанию
 $db = "travel_agency";
 
 $conn = new mysqli($host, $user, $pass, $db);
