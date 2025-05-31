@@ -1,25 +1,30 @@
-
 <?php
-ob_start();
+header('Permissions-Policy: interest-cohort=()');
 session_start();
-header("Cache-Control: no-cache, must-revalidate");
-header("Expires: Sat, 26 Jul 1997 05:00:00 GMT");
-require_once('navbar.php');
+$show_success = false; // Initialize variable
+require_once('navbar.php'); // Подключает config.php, где есть $conn
 
-// Конфигурация подключения к БД
-$db_config = [
-    'host' => 'localhost',
-    'user' => 'root',
-    'pass' => '',
-    'name' => 'travel_agency'
-];
+// Проверяем соединение
+if (!isset($conn) || $conn->connect_error) {
+    header('Content-Type: application/json');
+    die(json_encode(['error' => 'Database connection failed']));
+}
 
-$show_success = isset($_GET['refresh']) && $_GET['refresh'] === 'true';
+// Получаем все туры для слайд-шоу
 $tours = [];
-$destinations = [];
+$sql = "SELECT * FROM travels";
+$result = $conn->query($sql);
+
+while ($row = $result->fetch_assoc()) {
+    $tours[] = $row;
+}
 
 try {
-    $conn = new mysqli($db_config['host'], $db_config['user'], $db_config['pass'], $db_config['name']);
+    $servername = "db4free.net";
+$username = "myusername";
+$password = "EVu-Nec-y2k-rC3";
+$dbname = "travel_agency";
+$conn = new mysqli($servername, $username, $password, $dbname);
     
     if ($conn->connect_error) {
         throw new Exception('Ошибка подключения к базе данных: ' . $conn->connect_error);
@@ -1704,6 +1709,31 @@ try {
             icon.style.setProperty('--mouse-y', `${y}px`);
         });
     });
+    document.addEventListener('DOMContentLoaded', function() {
+    const navbar = document.querySelector('.nav-links');
+    if (navbar) {
+        console.log('Navbar найден в DOM:', navbar);
+        navbar.addEventListener('click', function(e) {
+            console.log('Клик по navbar:', e.target);
+            if (e.target.tagName === 'A') {
+                console.log('Переход по ссылке:', e.target.href);
+            }
+        });
+    } else {
+        console.error('Navbar не найден в DOM');
+        // Проверяем все nav-элементы
+        const navs = document.querySelectorAll('nav');
+        console.log('Все nav-элементы:', navs);
+        navs.forEach((nav, index) => {
+            console.log(`Nav ${index}:`, nav.className, nav.outerHTML);
+        });
+        // Проверяем, скрыт ли .nav-links из-за медиа-запроса
+        const hiddenNav = document.querySelector('.nav-links[style*="display: none"]');
+        if (hiddenNav) {
+            console.log('Nav-links скрыт из-за стилей:', hiddenNav);
+        }
+    }
+});
 </script>
 </body>
 </html>

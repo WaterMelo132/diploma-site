@@ -4,13 +4,6 @@ session_start();
 require_once('navbar.php');
 
 
-if (file_exists($navbar_path)) {
-    require_once($navbar_path);
-} else {
-    error_log('navbar.php не найден в ' . $navbar_path);
-    echo '<p style="color: red; position: fixed; top: 10px; left: 10px; z-index: 10000;">Ошибка: navbar.php не найден</p>';
-}
-
 // Подключение к базе данных
 $servername = "db4free.net";
 $username = "myusername";
