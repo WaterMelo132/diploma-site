@@ -1070,13 +1070,13 @@ $conn = new mysqli($servername, $username, $password, $dbname);
         <?php if ($tour['is_promo']): ?>
             <span class="promo-badge">Акция!</span>
         <?php endif; ?>
-        <img 
-            src="<?= htmlspecialchars(ltrim($tour['image'], '/')) ?>" 
-            alt="<?= htmlspecialchars($tour['title']) ?>" 
-            class="tour-image"
-            loading="lazy"
-            onerror="this.src='images/placeholder.jpg'"
-        >
+       <img 
+    src="<?php echo htmlspecialchars(ltrim($tour['image'], '/')); ?>" 
+    alt="<?php echo htmlspecialchars($tour['title']); ?>" 
+    class="tour-image"
+    loading="lazy"
+    onerror="this.src='images/placeholder.jpg'"
+>
                 <div class="tour-info">
                     <h3 class="tour-title"><?= htmlspecialchars($tour['title']) ?></h3>
                     <div class="tour-destination">
