@@ -713,6 +713,11 @@ $stmt->close();
                 right: 10px;
             }
         }
+         .navbar {
+
+    position: fixed !important;
+    top: 20px !important;
+}
     </style>
 </head>
 <body>

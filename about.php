@@ -23,12 +23,9 @@ require_once('navbar.php');
             --highlight-color: #2563eb;
         }
         .navbar {
-    z-index: 1000 !important;
+
     position: fixed !important;
-    top: 0 !important;
-    left: 0 !important;
-    width: 100% !important;
-    /* ... */
+    top: 20px !important;
 }
 
         body {

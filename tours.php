@@ -200,6 +200,11 @@ $conn = new mysqli($servername, $username, $password, $dbname);
             color: white;
             min-height: 100vh;
         }
+         .navbar {
+
+    position: fixed !important;
+    top: 20px !important;
+}
         
         .container {
             max-width: 1400px;

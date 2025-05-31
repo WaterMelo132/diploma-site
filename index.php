@@ -61,7 +61,11 @@ $conn->close();
         z-index: 1000 !important; /* Выше всех элементов */
        
     }
-   
+    .navbar {
+
+    position: fixed !important;
+    top: 20px !important;
+}
         body {
             font-family: 'Roboto', sans-serif;
             background-size: cover;
