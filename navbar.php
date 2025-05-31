@@ -23,455 +23,475 @@ if (isset($_SESSION['user_id'])) {
     <title>Stylish Navigation</title>
     <link href="https://fonts.googleapis.com/css2?family=Material+Icons+Outlined" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500&display=swap" rel="stylesheet">
-    <link href="/travel/css/navbar.css" rel="stylesheet">
+    <!-- Убрали подключение navbar.css, так как он ранее не находился -->
 </head>
 <style>
-    /* Основные стили для навбара */
-.navbar {
-    z-index: 1000 !important;
-    position:  !important;
-    top: 0 !important;
+    .itravel-navbar {
+    z-index: 9999 !important;
+    position: fixed !important;
+    top: 20px !important;
     left: 0 !important;
     width: 100% !important;
-    display: flex !important;
-    background: var(--navbar-bg) !important;
+    height: 60px !important; /* Убедитесь, что высота задана */
+    display: flex !important; /* Гарантируем отображение */
+    background: linear-gradient(180deg, rgba(20, 30, 40, 0.85), rgba(30, 40, 50, 0.75)) !important;
     backdrop-filter: blur(15px) !important;
     -webkit-backdrop-filter: blur(15px) !important;
     border-radius: 0 0 16px 16px !important;
     box-shadow: 0 3px 8px rgba(0, 0, 0, 0.2) !important;
     transition: all 0.3s ease !important;
+    opacity: 1 !important; /* Убедитесь, что не скрыт */
 }
 
-/* Эффект при скролле */
-.navbar.scrolled {
-    background: var(--navbar-bg-scrolled) !important;
-    height: 50px !important;
-    border-radius: 0 0 12px 12px !important;
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3) !important;
-}
-
-/* Анимация появления */
-.navbar.animate-on-load {
-    opacity: 0;
-    transform: translateY(-20px);
-    animation: slideIn 0.6s ease-out forwards;
-}
-
-@keyframes slideIn {
-    to {
-        opacity: 1;
-
-    }
-}
-
-/* Контейнер */
-.nav-container {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0 30px;
-    width: 100%;
-    max-width: 1400px;
-    margin: 0 auto;
-    height: 60px;
-    position: relative;
-    z-index: 1;
-}
-
-/* Логотип */
-.brand-name {
-    display: flex;
-    align-items: center;
-    font-family: 'Roboto', sans-serif;
-    font-weight: 500;
-    color: var(--text-color);
-    font-size: 22px;
-    letter-spacing: 0.5px;
-    transition: color 0.3s ease;
-}
-
-.brand-name:hover {
-    color: var(--accent-color);
-}
-
-.brand-name::after {
-    content: '';
-    position: absolute;
-    bottom: -2px;
-    left: 0;
-    width: 100%;
-    height: 2px;
-    background: var(--accent-color);
-    transform: scaleX(0);
-    transform-origin: bottom left;
-    transition: transform 0.3s ease;
-}
-
-.brand-name:hover::after {
-    transform: scaleX(1);
-}
-
-.brand-name .material-icons-outlined {
-    margin-right: 8px;
-    font-size: 26px;
-}
-
-/* Ссылки навигации */
-.nav-links {
-    display: flex;
-    gap: 20px;
-}
-
-.nav-link {
-    display: flex;
-    align-items: center;
-    color: var(--text-color);
-    text-decoration: none;
-    font-family: 'Roboto', sans-serif;
-    font-weight: 400;
-    font-size: 15px;
-    padding: 8px 12px;
-    border-radius: 6px;
-    position: relative;
-    overflow: hidden;
-    transition: color 0.3s ease, transform 0.2s ease;
-}
-
-.nav-link .material-icons-outlined {
-    margin-right: 6px;
-    font-size: 20px;
-}
-
-/* Эффект волны при наведении */
-.nav-link::before {
-    content: '';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    width: 0;
-    height: 0;
-    background: rgba(76, 175, 80, 0.2);
-    border-radius: 50%;
-    transform: translate(-50%, -50%);
-    transition: width 0.4s ease, height 0.4s ease;
-}
-
-.nav-link:hover::before {
-    width: 200px;
-    height: 200px;
-}
-
-.nav-link:hover {
-    color: var(--text-hover);
-    transform: translateY(-2px);
-}
-
-.nav-link.active {
-    color: var(--text-hover);
-    background: rgba(76, 175, 80, 0.3);
-    position: relative;
-}
-
-/* Анимированная линия снизу */
-.nav-link.active::after {
-    content: '';
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    width: 100%;
-    height: 2px;
-    background: var(--accent-color);
-    animation: underline 0.5s ease forwards;
-}
-
-@keyframes underline {
-    from {
-        width: 0;
-    }
-    to {
-        width: 100%;
-    }
-}
-
-/* Эффект свечения */
-.nav-link.active {
-    box-shadow: 0 0 8px rgba(76, 175, 80, 0.5);
-}
-
-/* Анимация иконок */
-.icon-pulse {
-    transition: transform 0.3s ease, color 0.3s ease;
-}
-
-.nav-link:hover .icon-pulse,
-.brand-name:hover .icon-pulse,
-.login-link:hover .icon-pulse {
-    transform: scale(1.2) rotate(10deg);
-    color: var(--accent-color);
-}
-
-/* Email пользователя */
-.user-email {
-    color: var(--text-color);
-    font-family: 'Roboto', sans-serif;
-    font-weight: 300;
-    font-size: 14px;
-    padding: 8px 12px;
-    border-radius: 6px;
-    transition: background-color 0.3s ease, color 0.3s ease;
-}
-
-.user-email:hover {
-    background-color: rgba(255, 255, 255, 0.1);
-    color: var(--text-hover);
-}
-
-/* Кнопка входа */
-.login-link {
-    display: flex;
-    align-items: center;
-    color: var(--accent-color);
-    text-decoration: none;
-    font-family: 'Roboto', sans-serif;
-    font-weight: 400;
-    font-size: 15px;
-    padding: 8px 12px;
-    border-radius: 6px;
-    position: relative;
-    overflow: hidden;
-    transition: color 0.3s ease;
-}
-
-.login-link::before {
-    content: '';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    width: 0;
-    height: 0;
-    background: rgba(76, 175, 80, 0.2);
-    border-radius: 50%;
-    transform: translate(-50%, -50%);
-    transition: width 0.4s ease, height 0.4s ease;
-}
-
-.login-link:hover::before {
-    width: 200px;
-    height: 200px;
-}
-
-.login-link:hover {
-    color: var(--text-hover);
-}
-
-.login-link .material-icons-outlined {
-    margin-right: 6px;
-    font-size: 20px;
-}
-
-/* Кнопка мобильного меню */
-.mobile-menu-btn {
-    display: none;
-    background: none;
-    border: none;
-    color: var(--text-color);
-    cursor: pointer;
-    font-size: 24px;
-    transition: color 0.3s ease;
-}
-
-.mobile-menu-btn:hover {
-    color: var(--accent-color);
-}
-
-/* Адаптивность для мобильных устройств */
-@media (max-width: 768px) {
-    .mobile-menu-btn {
-        display: block;
+    /* Эффект при скролле */
+    :where(.itravel-navbar.itravel-scrolled) {
+        background: rgba(20, 30, 40, 0.95) !important;
+        height: 50px !important;
+        border-radius: 0 0 12px 12px !important;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3) !important;
     }
 
-    .nav-links {
-        display: none;
-        flex-direction: column;
-        position: absolute;
-        top: 60px;
-        left: 0;
-        width: 100%;
-        background: var(--navbar-bg-scrolled) !important;
-        backdrop-filter: blur(15px) !important;
-        -webkit-backdrop-filter: blur(15px) !important;
-        border-radius: 0 0 16px 16px !important;
-        padding: 10px 0;
-        box-shadow: 0 3px 8px rgba(0, 0, 0, 0.2);
-        transform: translateY(-20px);
-        opacity: 0;
-        transition: all 0.4s ease;
+    /* Анимация появления */
+    :where(.itravel-navbar.itravel-animate-on-load) {
+        opacity: 0 !important;
+        transform: translateY(-20px) !important;
+        animation: slideIn 0.6s ease-out forwards !important;
     }
 
-    .nav-links.active {
-        display: flex;
-        transform: translateY(0);
-        opacity: 1;
+    @keyframes slideIn {
+        to {
+            opacity: 1 !important;
+            transform: translateY(0) !important;
+        }
     }
 
-    .nav-link {
-        padding: 12px 20px;
-        justify-content: center;
-        font-size: 16px;
+    /* Контейнер */
+    :where(.itravel-nav-container) {
+        all: initial !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: space-between !important;
+        padding: 0 30px !important;
+        width: 100% !important;
+        max-width: 1400px !important;
+        margin: 0 auto !important;
+        height: 60px !important;
+        position: relative !important;
+        z-index: 1 !important;
+        font-family: 'Roboto', sans-serif !important;
     }
 
-    .user-email,
-    .login-link {
-        padding: 12px 20px;
-        justify-content: center;
-        font-size: 15px;
+    /* Логотип */
+    :where(.itravel-brand-name) {
+        all: initial !important;
+        display: flex !important;
+        align-items: center !important;
+        font-family: 'Roboto', sans-serif !important;
+        font-weight: 500 !important;
+        color: #d0d0d0 !important;
+        font-size: 22px !important;
+        letter-spacing: 0.5px !important;
+        transition: color 0.3s ease !important;
+        position: relative !important;
     }
+
+    :where(.itravel-brand-name:hover) {
+        color: #4CAF50 !important;
+    }
+
+    :where(.itravel-brand-name::after) {
+        content: '' !important;
+        position: absolute !important;
+        bottom: -2px !important;
+        left: 0 !important;
+        width: 100% !important;
+        height: 2px !important;
+        background: #4CAF50 !important;
+        transform: scaleX(0) !important;
+        transform-origin: bottom left !important;
+        transition: transform 0.3s ease !important;
+    }
+
+    :where(.itravel-brand-name:hover::after) {
+        transform: scaleX(1) !important;
+    }
+
+    :where(.itravel-brand-name .material-icons-outlined) {
+        margin-right: 8px !important;
+        font-size: 26px !important;
+    }
+
+    /* Ссылки навигации */
+    :where(.itravel-nav-links) {
+        all: initial !important;
+        display: flex !important;
+        gap: 20px !important;
+        font-family: 'Roboto', sans-serif !important;
+    }
+
+    .itravel-nav-link {
+    display: flex !important;
+    align-items: center !important;
+    color: #d0d0d0 !important;
+    text-decoration: none !important;
+    font-family: 'Roboto', sans-serif !important;
+    font-weight: 400 !important;
+    font-size: 15px !important;
+    padding: 8px 12px !important;
+    border-radius: 6px !important;
+    position: relative !important;
+    overflow: hidden !important;
+    transition: color 0.3s ease, transform 0.2s ease !important;
+    cursor: pointer !important; /* Добавляем курсор */
 }
 
-/* Переменные для тем */
-:root {
-    --navbar-bg: linear-gradient(180deg, rgba(20, 30, 40, 0.85), rgba(30, 40, 50, 0.75));
-    --navbar-bg-scrolled: rgba(20, 30, 40, 0.95);
-    --text-color: #d0d0d0;
-    --text-hover: #ffffff;
-    --accent-color: #4CAF50;
+.itravel-nav-link:hover {
+    color: #ffffff !important;
+    transform: translateY(-2px) !important;
+    cursor: pointer !important; /* Убеждаемся, что hover тоже включает курсор */
 }
 
-.light-theme {
-    --navbar-bg: linear-gradient(180deg, rgba(200, 210, 220, 0.85), rgba(220, 230, 240, 0.75));
-    --navbar-bg-scrolled: rgba(200, 210, 220, 0.95);
-    --text-color: #333333;
-    --text-hover: #000000;
-    --accent-color: #2196F3;
-}
+    :where(.itravel-nav-link .material-icons-outlined) {
+        margin-right: 6px !important;
+        font-size: 20px !important;
+    }
 
-/* Кнопка переключения темы */
-.theme-toggle {
-    background: none;
-    border: none;
-    color: var(--text-color);
-    cursor: pointer;
-    font-size: 24px;
-    transition: transform 0.3s ease, color 0.3s ease;
-}
+    /* Эффект волны при наведении */
+    :where(.itravel-nav-link::before) {
+        content: '' !important;
+        position: absolute !important;
+        top: 50% !important;
+        left: 50% !important;
+        width: 0 !important;
+        height: 0 !important;
+        background: rgba(76, 175, 80, 0.2) !important;
+        border-radius: 50% !important;
+        transform: translate(-50%, -50%) !important;
+        transition: width 0.4s ease, height 0.4s ease !important;
+    }
 
-.theme-toggle:hover {
-    color: var(--accent-color);
-    transform: rotate(180deg);
-}
+    :where(.itravel-nav-link:hover::before) {
+        width: 200px !important;
+        height: 200px !important;
+    }
 
-/* Плавный переход для смены темы */
-.navbar,
-.nav-link,
-.user-email,
-.mobile-menu-btn,
-.brand-name,
-.login-link {
-    transition: background 0.5s ease, color 0.5s ease !important;
-}
+    :where(.itravel-nav-link:hover) {
+        color: #ffffff !important;
+        transform: translateY(-2px) !important;
+    }
 
-/* Фон с частицами */
-.navbar-bg {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    z-index: -1;
-    opacity: 0.3;
-}
-    </style>
+    :where(.itravel-nav-link.itravel-active) {
+        color: #ffffff !important;
+        background: rgba(76, 175, 80, 0.3) !important;
+        position: relative !important;
+    }
+
+    /* Анимированная линия снизу */
+    :where(.itravel-nav-link.itravel-active::after) {
+        content: '' !important;
+        position: absolute !important;
+        bottom: 0 !important;
+        left: 0 !important;
+        width: 100% !important;
+        height: 2px !important;
+        background: #4CAF50 !important;
+        animation: underline 0.5s ease forwards !important;
+    }
+
+    @keyframes underline {
+        from {
+            width: 0 !important;
+        }
+        to {
+            width: 100% !important;
+        }
+    }
+
+    /* Эффект свечения */
+    :where(.itravel-nav-link.itravel-active) {
+        box-shadow: 0 0 8px rgba(76, 175, 80, 0.5) !important;
+    }
+
+    /* Анимация иконок */
+    :where(.itravel-icon-pulse) {
+        transition: transform 0.3s ease, color 0.3s ease !important;
+    }
+
+    :where(.itravel-nav-link:hover .itravel-icon-pulse),
+    :where(.itravel-brand-name:hover .itravel-icon-pulse),
+    :where(.itravel-login-link:hover .itravel-icon-pulse) {
+        transform: scale(1.2) rotate(10deg) !important;
+        color: #4CAF50 !important;
+    }
+
+    /* Email пользователя */
+    :where(.itravel-user-email) {
+        all: initial !important;
+        color: #d0d0d0 !important;
+        font-family: 'Roboto', sans-serif !important;
+        font-weight: 300 !important;
+        font-size: 14px !important;
+        padding: 8px 12px !important;
+        border-radius: 6px !important;
+        transition: background-color 0.3s ease, color 0.3s ease !important;
+    }
+
+    :where(.itravel-user-email:hover) {
+        background-color: rgba(255, 255, 255, 0.1) !important;
+        color: #ffffff !important;
+    }
+
+    /* Кнопка входа */
+    :where(.itravel-login-link) {
+        all: initial !important;
+        display: flex !important;
+        align-items: center !important;
+        color: #4CAF50 !important;
+        text-decoration: none !important;
+        font-family: 'Roboto', sans-serif !important;
+        font-weight: 400 !important;
+        font-size: 15px !important;
+        padding: 8px 12px !important;
+        border-radius: 6px !important;
+        position: relative !important;
+        overflow: hidden !important;
+        transition: color 0.3s ease !important;
+    }
+
+    :where(.itravel-login-link::before) {
+        content: '' !important;
+        position: absolute !important;
+        top: 50% !important;
+        left: 50% !important;
+        width: 0 !important;
+        height: 0 !important;
+        background: rgba(76, 175, 80, 0.2) !important;
+        border-radius: 50% !important;
+        transform: translate(-50%, -50%) !important;
+        transition: width 0.4s ease, height 0.4s ease !important;
+    }
+
+    :where(.itravel-login-link:hover::before) {
+        width: 200px !important;
+        height: 200px !important;
+    }
+
+    :where(.itravel-login-link:hover) {
+        color: #ffffff !important;
+    }
+
+    :where(.itravel-login-link .material-icons-outlined) {
+        margin-right: 6px !important;
+        font-size: 20px !important;
+    }
+
+    /* Кнопка мобильного меню */
+    :where(.itravel-mobile-menu-btn) {
+        all: initial !important;
+        display: none !important;
+        background: none !important;
+        border: none !important;
+        color: #d0d0d0 !important;
+        cursor: pointer !important;
+        font-size: 24px !important;
+        transition: color 0.3s ease !important;
+    }
+
+    :where(.itravel-mobile-menu-btn:hover) {
+        color: #4CAF50 !important;
+    }
+
+    /* Адаптивность для мобильных устройств */
+    @media (max-width: 768px) {
+        :where(.itravel-mobile-menu-btn) {
+            display: block !important;
+        }
+
+        :where(.itravel-nav-links) {
+            display: none !important;
+            flex-direction: column !important;
+            position: absolute !important;
+            top: 60px !important;
+            left: 0 !important;
+            width: 100% !important;
+            background: rgba(20, 30, 40, 0.95) !important;
+            backdrop-filter: blur(15px) !important;
+            -webkit-backdrop-filter: blur(15px) !important;
+            border-radius: 0 0 16px 16px !important;
+            padding: 10px 0 !important;
+            box-shadow: 0 3px 8px rgba(0, 0, 0, 0.2) !important;
+            transform: translateY(-20px) !important;
+            opacity: 0 !important;
+            transition: all 0.4s ease !important;
+        }
+
+        :where(.itravel-nav-links.itravel-active) {
+            display: flex !important;
+            transform: translateY(0) !important;
+            opacity: 1 !important;
+        }
+
+        :where(.itravel-nav-link) {
+            padding: 12px 20px !important;
+            justify-content: center !important;
+            font-size: 16px !important;
+        }
+
+        :where(.itravel-user-email),
+        :where(.itravel-login-link) {
+            padding: 12px 20px !important;
+            justify-content: center !important;
+            font-size: 15px !important;
+        }
+    }
+
+    /* Переменные для тем */
+    :root {
+        --navbar-bg: linear-gradient(180deg, rgba(20, 30, 40, 0.85), rgba(30, 40, 50, 0.75)) !important;
+        --navbar-bg-scrolled: rgba(20, 30, 40, 0.95) !important;
+        --text-color: #d0d0d0 !important;
+        --text-hover: #ffffff !important;
+        --accent-color: #4CAF50 !important;
+    }
+
+    :where(.itravel-light-theme) {
+        --navbar-bg: linear-gradient(180deg, rgba(200, 210, 220, 0.85), rgba(220, 230, 240, 0.75)) !important;
+        --navbar-bg-scrolled: rgba(200, 210, 220, 0.95) !important;
+        --text-color: #333333 !important;
+        --text-hover: #000000 !important;
+        --accent-color: #2196F3 !important;
+    }
+
+    /* Кнопка переключения темы */
+    :where(.itravel-theme-toggle) {
+        all: initial !important;
+        background: none !important;
+        border: none !important;
+        color: #d0d0d0 !important;
+        cursor: pointer !important;
+        font-size: 24px !important;
+        transition: transform 0.3s ease, color 0.3s ease !important;
+    }
+
+    :where(.itravel-theme-toggle:hover) {
+        color: #4CAF50 !important;
+        transform: rotate(180deg) !important;
+    }
+
+    /* Плавный переход для смены темы */
+    :where(.itravel-navbar),
+    :where(.itravel-nav-link),
+    :where(.itravel-user-email),
+    :where(.itravel-mobile-menu-btn),
+    :where(.itravel-brand-name),
+    :where(.itravel-login-link) {
+        transition: background 0.5s ease, color 0.5s ease !important;
+    }
+
+    /* Фон с частицами */
+    :where(.itravel-navbar-bg) {
+        all: initial !important;
+        position: absolute !important;
+        top: 0 !important;
+        left: 0 !important;
+        width: 100% !important;
+        height: 100% !important;
+        z-index: -1 !important;
+        opacity: 0.3 !important;
+    }
+</style>
 <body>
-<header class="navbar animate-on-load">
-    <div class="nav-container">
-        <div class="brand-name">
-            <span class="material-icons-outlined icon-pulse">travel_explore</span>
+<header class="itravel-navbar itravel-animate-on-load">
+    <div class="itravel-nav-container">
+        <div class="itravel-brand-name">
+            <span class="material-icons-outlined itravel-icon-pulse">travel_explore</span>
             <span>iTravel</span>
         </div>
         
-        <button class="mobile-menu-btn">
-            <span class="material-icons-outlined icon-pulse">menu</span>
+        <button class="itravel-mobile-menu-btn">
+            <span class="material-icons-outlined itravel-icon-pulse">menu</span>
         </button>
         
-       <nav class="nav-links">
-    <a href="index.php" class="nav-link <?= $current == 'index.php' ? 'active' : '' ?>">
-        <span class="material-icons-outlined icon-pulse">home</span>
-        <span>Главная</span>
-    </a>
-    <a href="about.php" class="nav-link <?= $current == 'about.php' ? 'active' : '' ?>">
-        <span class="material-icons-outlined icon-pulse">info</span>
-        <span>О нас</span>
-    </a>
-    <a href="tours.php" class="nav-link <?= $current == 'tours.php' ? 'active' : '' ?>">
-        <span class="material-icons-outlined icon-pulse">map</span>
-        <span>Туры</span>
-    </a>
-    <a href="contact.php" class="nav-link <?= $current == 'contact.php' ? 'active' : '' ?>">
-        <span class="material-icons-outlined icon-pulse">mail</span>
-        <span>Контакты</span>
-    </a>
-    <a href="profile.php" class="nav-link <?= $current == 'profile.php' ? 'active' : '' ?>">
-        <span class="material-icons-outlined icon-pulse">person</span>
-        <span>Профиль</span>
-    </a>
-    <a href="chat.php" class="nav-link <?= $current == 'chat.php' ? 'active' : '' ?>">
-        <span class="material-icons-outlined icon-pulse">chat</span>
-        <span>Чат</span>
-    </a>
-
-</nav>
+        <nav class="itravel-nav-links">
+            <a href="index.php" class="itravel-nav-link <?= $current == 'index.php' ? 'itravel-active' : '' ?>">
+                <span class="material-icons-outlined itravel-icon-pulse">home</span>
+                <span>Главная</span>
+            </a>
+            <a href="about.php" class="itravel-nav-link <?= $current == 'about.php' ? 'itravel-active' : '' ?>">
+                <span class="material-icons-outlined itravel-icon-pulse">info</span>
+                <span>О нас</span>
+            </a>
+            <a href="tours.php" class="itravel-nav-link <?= $current == 'tours.php' ? 'itravel-active' : '' ?>">
+                <span class="material-icons-outlined itravel-icon-pulse">map</span>
+                <span>Туры</span>
+            </a>
+            <a href="contact.php" class="itravel-nav-link <?= $current == 'contact.php' ? 'itravel-active' : '' ?>">
+                <span class="material-icons-outlined itravel-icon-pulse">mail</span>
+                <span>Контакты</span>
+            </a>
+            <a href="profile.php" class="itravel-nav-link <?= $current == 'profile.php' ? 'itravel-active' : '' ?>">
+                <span class="material-icons-outlined itravel-icon-pulse">person</span>
+                <span>Профиль</span>
+            </a>
+            <a href="chat.php" class="itravel-nav-link <?= $current == 'chat.php' ? 'itravel-active' : '' ?>">
+                <span class="material-icons-outlined itravel-icon-pulse">chat</span>
+                <span>Чат</span>
+            </a>
+        </nav>
         
         <?php if(isset($_SESSION['user_id'])): ?>
-            <div class="user-email">
+            <div class="itravel-user-email">
                 <?= htmlspecialchars($user_email) ?>
             </div>
         <?php else: ?>
-            <a href="/travel/login.php" class="login-link">
-                <span class="material-icons-outlined icon-pulse">login</span>
+            <a href="/travel/login.php" class="itravel-login-link">
+                <span class="material-icons-outlined itravel-icon-pulse">login</span>
                 <span>Войти</span>
             </a>
         <?php endif; ?>
-        <button class="theme-toggle">
+        <button class="itravel-theme-toggle">
             <span class="material-icons-outlined">brightness_6</span>
         </button>
     </div>
-    <canvas class="navbar-bg"></canvas> <!-- Фон с частицами -->
+    <canvas class="itravel-navbar-bg"></canvas>
 </header>
 
 <script>
-    
-    // Управление скроллом
+// Управление скроллом
 window.addEventListener('scroll', () => {
-    const navbar = document.querySelector('.navbar');
-    if (window.scrollY > 50) {
-        navbar.classList.add('scrolled');
-    } else {
-        navbar.classList.remove('scrolled');
+    const navbar = document.querySelector('.itravel-navbar'); // Используем правильный класс
+    if (navbar && window.scrollY > 50) {
+        navbar.classList.add('itravel-scrolled');
+    } else if (navbar) {
+        navbar.classList.remove('itravel-scrolled');
     }
 });
 
 // Управление мобильным меню
-const mobileMenuBtn = document.querySelector('.mobile-menu-btn');
-const navLinks = document.querySelector('.nav-links');
+const mobileMenuBtn = document.querySelector('.itravel-mobile-menu-btn');
+const navLinks = document.querySelector('.itravel-nav-links');
+if (mobileMenuBtn && navLinks) {
+    mobileMenuBtn.addEventListener('click', () => {
+        navLinks.classList.toggle('itravel-active');
+    });
+}
 
-mobileMenuBtn.addEventListener('click', () => {
-    navLinks.classList.toggle('active');
-});
+
 
 // Переключение темы
-const themeToggle = document.querySelector('.theme-toggle');
+const themeToggle = document.querySelector('.itravel-theme-toggle');
 themeToggle.addEventListener('click', () => {
-    document.body.classList.toggle('light-theme');
-    localStorage.setItem('theme', document.body.classList.contains('light-theme') ? 'light' : 'dark');
+    document.body.classList.toggle('itravel-light-theme');
+    localStorage.setItem('theme', document.body.classList.contains('itravel-light-theme') ? 'light' : 'dark');
 });
 
 // Загрузка сохраненной темы
 if (localStorage.getItem('theme') === 'light') {
-    document.body.classList.add('light-theme');
+    document.body.classList.add('itravel-light-theme');
 }
 
 // Анимация частиц
-const canvas = document.querySelector('.navbar-bg');
+const canvas = document.querySelector('.itravel-navbar-bg');
 const ctx = canvas.getContext('2d');
 
 canvas.width = window.innerWidth;
