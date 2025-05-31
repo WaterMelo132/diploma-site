@@ -1,21 +1,17 @@
 <?php
+session_start();
+if (empty($_SESSION['csrf_token'])) {
+    $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+}
+require_once('navbar.php'); // Подключает config.php, где есть $conn
 // Включим вывод ошибок для отладки
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
-require_once('navbar.php'); // Подключает config.php, где есть $conn
 
-// Убедимся, что сессия стартована
-if (session_status() === PHP_SESSION_NONE) {
-    session_start();
-    
-    // Инициализация CSRF-токена, если его нет
-    if (empty($_SESSION['csrf_token'])) {
-        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
-    }
-}
 
-include($_SERVER['DOCUMENT_ROOT'].'/travel/config.php');
+
+include(__DIR__ . '/config.php');
 
 // Получаем данные пользователя
 $username = "Гость";
