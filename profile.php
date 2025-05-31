@@ -14,8 +14,7 @@ if (session_status() === PHP_SESSION_NONE) {
     }
 }
 
-// Подключаем конфигурацию базы данных
-include($_SERVER['DOCUMENT_ROOT'].'config.php');
+include($_SERVER['DOCUMENT_ROOT'].'/config.php');
 
 // Получаем данные пользователя
 $username = "Гость";
@@ -431,7 +430,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' &&
     }
 }
 
-include($_SERVER['DOCUMENT_ROOT'].'/travel/navbar.php');
+include($_SERVER['DOCUMENT_ROOT'].'navbar.php');
 
 function formatStatus($status) {
     switch ($status) {
