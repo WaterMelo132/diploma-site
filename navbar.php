@@ -31,7 +31,7 @@ if (isset($_SESSION['user_id'])) {
     z-index: 1000 !important;
     position:  !important;
     top: 0 !important;
-    left: -20px !important;
+    left: 0 !important;
     width: 100% !important;
     display: flex !important;
     background: var(--navbar-bg) !important;
