@@ -15,7 +15,7 @@ if (session_status() === PHP_SESSION_NONE) {
 }
 
 // Подключаем конфигурацию базы данных
-include($_SERVER['DOCUMENT_ROOT'].'/travel/config.php');
+include($_SERVER['DOCUMENT_ROOT'].'config.php');
 
 // Получаем данные пользователя
 $username = "Гость";

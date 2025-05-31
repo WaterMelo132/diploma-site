@@ -13,8 +13,7 @@ require_once('navbar.php');
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Outlined" rel="stylesheet">
     
-    <!-- Стили навигации -->
-    <link rel="stylesheet" href="styles/navbar.css"> <!-- Здесь твой CSS выше -->
+
 
     <style>
         :root {
@@ -23,6 +22,14 @@ require_once('navbar.php');
             --text-color-dark: #4b5563;
             --highlight-color: #2563eb;
         }
+        .navbar {
+    z-index: 1000 !important;
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100% !important;
+    /* ... */
+}
 
         body {
             background-color: var(--bg-color);
