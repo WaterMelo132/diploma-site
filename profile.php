@@ -15,7 +15,7 @@ if (session_status() === PHP_SESSION_NONE) {
     }
 }
 
-include($_SERVER['DOCUMENT_ROOT'].'/config.php');
+include($_SERVER['DOCUMENT_ROOT'].'/travel/config.php');
 
 // Получаем данные пользователя
 $username = "Гость";
@@ -542,11 +542,1688 @@ $stmt->close();
     <title>Мой профиль | Travel Agency</title>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href='https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.css' rel='stylesheet' />
-    <link href="/travel/css/profil.css" rel="stylesheet">
+
     <meta name="csrf-token" content="<?php echo htmlspecialchars($_SESSION['csrf_token']); ?>">
     <meta http-equiv="Permissions-Policy" content="interest-cohort=()">
     <meta name="referrer" content="strict-origin-when-cross-origin">
     <style>
+        :root {
+    --primary-color: #3498db;
+    --secondary-color: #2c3e50;
+    --accent-color: #3498db;
+    --light-gray: #f8f9fa;
+    --medium-gray: #e9ecef;
+    --dark-gray: #6c757d;
+    --white: #ffffff;
+    --black: #212529;
+}
+.avatar {
+    transition: all 0.3s ease;
+    border: 3px solid #fff;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+}
+
+.avatar:hover {
+    transform: rotate(5deg) scale(1.1);
+    box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+}
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    min-height: 100vh;
+    background: 
+        linear-gradient(rgba(0, 0, 0, 0.3), 
+        rgba(0, 0, 0, 0.3)),
+        url('https://images.unsplash.com/photo-1506929562872-bb421503ef21?ixlib=rb-1.2.1&auto=format&fit=crop&w=1350&q=80');
+    background-size: cover;
+    background-position: center;
+    background-attachment: fixed;
+    margin: 0;
+    padding: 0;
+    color: var(--black);
+}
+
+.dashboard {
+    display: grid;
+    grid-template-columns: 250px 1fr;
+    gap: 20px;
+    max-width: 1200px;
+    margin: 20px auto;
+    padding: 0 20px;
+}
+
+.sidebar {
+    background-color: var(--white);
+    border-radius: 10px;
+    padding: 20px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+
+.main-content {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.content-section {
+    display: none;
+    background-color: var(--white);
+    border-radius: 10px;
+    padding: 20px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+
+.content-section.active {
+    display: block;
+}
+
+.welcome-section {
+    background-color: var(--white);
+    border-radius: 10px;
+    padding: 20px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+
+.progress-container {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+}
+
+.card {
+    background-color: var(--white);
+    border-radius: 10px;
+    padding: 20px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+
+h1 {
+    font-size: 24px;
+    margin: 0 0 10px 0;
+    color: var(--secondary-color);
+}
+
+h2 {
+    font-size: 18px;
+    margin: 0 0 15px 0;
+    color: var(--secondary-color);
+}
+
+h3 {
+    font-size: 16px;
+    margin: 20px 0 10px 0;
+    color: var(--secondary-color);
+}
+
+.user-info {
+    text-align: center;
+    margin-bottom: 20px;
+}
+
+.avatar {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    object-fit: cover;
+    margin-bottom: 10px;
+    border: 3px solid var(--primary-color);
+}
+
+.username {
+    font-size: 18px;
+    font-weight: bold;
+    margin-bottom: 5px;
+}
+
+.user-email {
+    color: var(--dark-gray);
+    font-size: 14px;
+}
+
+.menu-item {
+    display: flex;
+    align-items: center;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--medium-gray);
+    cursor: pointer;
+    color: var(--secondary-color);
+}
+
+.menu-item:last-child {
+    border-bottom: none;
+}
+
+.menu-item:hover, .menu-item.active {
+    color: var(--primary-color);
+}
+
+.menu-icon {
+    margin-right: 10px;
+    font-size: 16px;
+    width: 20px;
+    text-align: center;
+}
+
+/* Стили для блока моих записей */
+#bookings .card, #favorites .card {
+    background-color: #fff;
+    border-radius: 10px;
+    padding: 20px;
+    box-shadow: 0 2px 15px rgba(0,0,0,0.1);
+}
+
+.trip-card {
+    display: flex;
+    margin-bottom: 20px;
+    padding: 15px;
+    border-radius: 8px;
+    background-color: #f8f9fa;
+    transition: all 0.3s ease;
+    border: 1px solid #e0e0e0;
+}
+
+.trip-card:hover {
+    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+    transform: translateY(-2px);
+    border-color: #3498db;
+}
+
+.trip-image {
+    width: 120px;
+    height: 90px;
+    border-radius: 6px;
+    object-fit: cover;
+    margin-right: 20px;
+    border: 1px solid #ddd;
+}
+
+.trip-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.trip-title {
+    font-size: 18px;
+    font-weight: 600;
+    color: #2c3e50;
+    margin-bottom: 5px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.trip-description {
+    font-size: 14px;
+    color: #555;
+    margin-bottom: 8px;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.trip-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 15px;
+    margin-top: 10px;
+}
+
+.trip-date, .appointment-date {
+    display: flex;
+    align-items: center;
+    font-size: 13px;
+    color: #666;
+}
+
+.trip-date i, .appointment-date i {
+    margin-right: 5px;
+    color: #3498db;
+}
+
+.status-badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 500;
+    margin-left: 10px;
+}
+
+.status-pending {
+    background-color: #FFC107;
+    color: #000;
+}
+
+.status-confirmed {
+    background-color: #4CAF50;
+    color: white;
+}
+
+.status-cancelled {
+    background-color: #F44336;
+    color: white;
+}
+
+.trip-actions {
+    display: flex;
+    align-items: center;
+    margin-left: 15px;
+}
+
+
+.cancel-btn {
+    background-color: #e74c3c;
+    color: white;
+    border: none;
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: background 0.2s;
+}
+
+.cancel-btn:hover {
+    background-color: #c0392b;
+}
+
+.no-bookings, .no-favorites {
+    text-align: center;
+    padding: 40px 20px;
+    color: #7f8c8d;
+}
+
+.no-bookings i, .no-favorites i {
+    font-size: 50px;
+    margin-bottom: 15px;
+    color: #bdc3c7;
+}
+
+.no-bookings p, .no-favorites p {
+    font-size: 16px;
+    margin-top: 10px;
+}
+
+.price-tag {
+    background-color: #3498db;
+    color: white;
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 14px;
+    font-weight: bold;
+}
+
+@media (max-width: 768px) {
+    .dashboard {
+        grid-template-columns: 1fr;
+    }
+    
+    .trip-card {
+        flex-direction: column;
+    }
+    
+    .trip-image {
+        width: 100%;
+        height: 150px;
+        margin-right: 0;
+        margin-bottom: 15px;
+    }
+    
+    .trip-actions {
+        margin-left: 0;
+        margin-top: 10px;
+        justify-content: flex-end;
+    }
+}
+/* Стили для календаря */
+#calendar-container {
+max-width: 100%;
+margin: 0 auto;
+font-family: 'Segoe UI', sans-serif;
+}
+
+.fc .fc-toolbar-title {
+font-size: 1.2em;
+color: #2c3e50;
+font-weight: 600;
+}
+/* Стиль для однодневных событий */
+.fc-event-single-day {
+width: calc(100% - 6px) !important;
+margin: 3px !important;
+}
+
+/* Убираем стрелку продолжительности */
+.fc-event-single-day:after {
+display: none !important;
+}
+
+.fc .fc-button {
+background-color: #3498db;
+border: none;
+transition: all 0.3s;
+padding: 6px 12px;
+}
+
+.fc .fc-button:hover {
+background-color: #2980b9;
+transform: translateY(-1px);
+}
+
+.fc .fc-button-primary:not(:disabled).fc-button-active {
+background-color: #2c3e50;
+}
+
+.fc .fc-daygrid-day-number {
+color: #2c3e50;
+font-weight: bold;
+}
+
+.fc .fc-day-today {
+background-color: rgba(52, 152, 219, 0.1) !important;
+}
+
+.fc-event {
+cursor: pointer;
+font-size: 12px;
+border-radius: 4px;
+border: none;
+padding: 2px 4px;
+transition: all 0.2s;
+}
+
+.fc-event:hover {
+transform: translateY(-1px);
+box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+}
+
+.fc-event.confirmed {
+background-color: #4CAF50;
+}
+
+.fc-event.pending {
+background-color: #FFC107;
+color: #000;
+}
+
+.fc-event.cancelled {
+background-color: #F44336;
+}
+
+.fc-daygrid-event-dot {
+display: none;
+}
+
+@media (max-width: 768px) {
+.fc .fc-toolbar {
+    flex-direction: column;
+    gap: 10px;
+}
+
+.fc .fc-toolbar-chunk {
+    display: flex;
+    justify-content: center;
+    width: 100%;
+}
+
+.fc .fc-button {
+    padding: 4px 8px;
+    font-size: 0.8em;
+}
+
+.fc .fc-toolbar-title {
+    font-size: 1em;
+    text-align: center;
+}
+}
+
+
+/* Обновленные стили для статистики */
+.user-stats {
+    background: #ffffff;
+    border-radius: 12px;
+    padding: 25px;
+    margin-bottom: 25px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+}
+
+.user-stats h3 {
+    margin-top: 0;
+    color: #2d3748;
+    font-size: 1.4rem;
+    padding-bottom: 15px;
+    border-bottom: 1px solid #edf2f7;
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 20px;
+    margin-top: 20px;
+}
+
+.stat-card {
+    background: #ffffff;
+    border-radius: 10px;
+    padding: 20px;
+    text-align: center;
+    transition: all 0.3s ease;
+    border: 1px solid #e2e8f0;
+    position: relative;
+    overflow: hidden;
+}
+
+.stat-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
+    border-color: #cbd5e0;
+}
+
+.stat-card i {
+    font-size: 28px;
+    color: #4c51bf;
+    margin-bottom: 15px;
+    background: #f0f1ff;
+    width: 60px;
+    height: 60px;
+    line-height: 60px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.stat-value {
+    font-size: 32px;
+    font-weight: 700;
+    color: #2d3748;
+    margin: 10px 0;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.stat-label {
+    font-size: 15px;
+    color: #718096;
+    font-weight: 500;
+}
+
+
+/* Обновленные стили для достижений */
+.achievements-section {
+    background: #ffffff;
+    border-radius: 12px;
+    padding: 25px;
+    margin-bottom: 25px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+}
+
+.achievements-section h3 {
+    margin-top: 0;
+    color: #2d3748;
+    font-size: 1.4rem;
+    padding-bottom: 15px;
+    border-bottom: 1px solid #edf2f7;
+}
+
+.achievements-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 20px;
+    margin-top: 20px;
+}
+
+.achievement {
+    display: flex;
+    align-items: center;
+    padding: 20px;
+    border-radius: 10px;
+    background: #ffffff;
+    transition: all 0.3s ease;
+    border: 1px solid #e2e8f0;
+    position: relative;
+    overflow: hidden;
+}
+
+.achievement.unlocked {
+    background: linear-gradient(135deg, #f0f4ff 0%, #e0e7ff 100%);
+    border-left: 4px solid #4c51bf;
+}
+
+.achievement.locked {
+    background: #f8fafc;
+    filter: grayscale(30%);
+    opacity: 0.9;
+}
+
+.achievement-icon {
+    width: 60px;
+    height: 60px;
+    background: #4c51bf;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 20px;
+    color: white;
+    font-size: 24px;
+    flex-shrink: 0;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.achievement.locked .achievement-icon {
+    background: #a0aec0;
+}
+
+.achievement-info {
+    flex-grow: 1;
+}
+
+.achievement-info h4 {
+    margin: 0 0 5px 0;
+    color: #2d3748;
+    font-size: 1.1rem;
+}
+
+.achievement-info p {
+    margin: 0;
+    font-size: 14px;
+    color: #4a5568;
+}
+
+.achievement-date, .achievement-badge {
+    font-size: 13px;
+    color: #4c51bf;
+    margin-top: 8px;
+    display: block;
+    font-weight: 500;
+}
+
+.achievement-progress {
+    font-size: 13px;
+    color: #718096;
+    margin-top: 8px;
+    display: block;
+}
+
+/* Анимации */
+@keyframes unlockAchievement {
+    0% { transform: scale(1); box-shadow: 0 0 0 rgba(76, 81, 191, 0); }
+    50% { transform: scale(1.05); box-shadow: 0 0 20px rgba(76, 81, 191, 0.3); }
+    100% { transform: scale(1); box-shadow: 0 0 0 rgba(76, 81, 191, 0); }
+}
+
+.achievement.unlocked {
+    animation: unlockAchievement 0.6s ease;
+}
+.progress-bar {
+    height: 5px;
+    background: #e9ecef;
+    border-radius: 3px;
+    margin-top: 8px;
+}
+.progress {
+    height: 100%;
+    background: #4e73df;
+    border-radius: 3px;
+}
+.menu-icon {
+    transition: all 0.3s ease;
+}
+
+.menu-item:hover .menu-icon {
+    transform: translateX(5px);
+    color: #4e73df;
+}
+.travel-animation {
+    position: relative;
+    height: 200px;
+    overflow: hidden;
+    margin: 20px 0;
+}
+
+.travel-hero {
+    position: relative;
+    height: 250px;
+    margin: 30px 0;
+    overflow: hidden;
+    border-radius: 12px;
+    background: linear-gradient(135deg, #f5f7fa 0%, #e4e8f0 100%);
+}
+
+
+
+
+
+
+/* admin */
+
+
+    /* Общие стили для админ-панели */
+    .admin-card {
+        background: #ffffff;
+        border-radius: 12px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+        padding: 1.5rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .admin-form, .admin-table-container {
+        display: none; /* Скрываем блоки по умолчанию */
+        padding: 3rem;
+        background: #ffffff;
+        border-radius: 0.5rem;
+        border: 1px solid #e2e8f0;
+        margin-top: 0.5rem;
+        animation: slideDown 0.3s ease-out forwards;
+    }
+    
+    .admin-form.show, .admin-table-container.show {
+        display: block; /* Показываем при активации */
+    }
+    
+    @keyframes slideDown {
+        from {
+            opacity: 0;
+            transform: translateY(-10px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+    .admin-section {
+        margin-bottom: 2rem;
+    }
+
+    .admin-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+    }
+
+    .admin-header h3 {
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: #333;
+        margin: 0;
+    }
+
+    .toggle-form-btn {
+        background: none;
+        border: none;
+        cursor: pointer;
+        color: #666;
+        transition: transform 0.3s ease;
+    }
+
+    .toggle-form-btn.active i {
+        transform: rotate(180deg);
+    }
+
+    /* Фильтры */
+    .admin-filters {
+        display: flex;
+        gap: 1.5rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .filter-group {
+        flex: 1;
+    }
+
+    .filter-group label {
+        display: block;
+        font-size: 0.9rem;
+        font-weight: 500;
+        color: #555;
+        margin-bottom: 0.5rem;
+    }
+
+    .filter-group input,
+    .filter-group select {
+        width: 100%;
+        padding: 0.75rem;
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+        font-size: 0.95rem;
+        color: #333;
+        background: #f9f9f9;
+        transition: border-color 0.3s ease, box-shadow 0.3s ease;
+    }
+
+    .filter-group input:focus,
+    .filter-group select:focus {
+        border-color: #007bff;
+        box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+        outline: none;
+        background: #fff;
+    }
+
+    /* Стили формы */
+    .admin-form {
+        display: none;
+        transition: all 0.3s ease;
+    }
+
+    .form-row {
+        display: flex;
+        gap: 1.5rem;
+        margin-bottom: 1rem;
+    }
+
+    .form-group {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .form-group label {
+        display: block;
+        font-size: 0.9rem;
+        font-weight: 500;
+        color: #555;
+        margin-bottom: 0.5rem;
+    }
+
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+        width: 100%;
+        padding: 0.75rem;
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+        font-size: 0.95rem;
+        color: #333;
+        background: #f9f9f9;
+        transition: border-color 0.3s ease, box-shadow 0.3s ease;
+    }
+
+    .form-group input:focus,
+    .form-group select:focus,
+    .form-group textarea:focus {
+        border-color: #007bff;
+        box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+        outline: none;
+        background: #fff;
+    }
+
+    .form-group textarea {
+        min-height: 100px;
+        resize: vertical;
+    }
+
+    /* Стили таблицы */
+    .admin-table table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.95rem;
+    }
+
+    .admin-table th,
+    .admin-table td {
+        padding: 0.75rem 1rem;
+        text-align: left;
+        border-bottom: 1px solid #e0e0e0;
+    }
+
+    .admin-table th {
+        background: #f5f5f5;
+        font-weight: 600;
+        color: #333;
+        text-transform: uppercase;
+        font-size: 0.85rem;
+        letter-spacing: 0.5px;
+    }
+
+    .admin-table td {
+        color: #555;
+    }
+
+    .admin-table tr {
+        transition: background 0.2s ease;
+    }
+
+    .admin-table tr:hover {
+        background: #f9f9f9;
+    }
+
+    /* Статус */
+    .status-badge {
+        display: inline-block;
+        padding: 0.25rem 0.75rem;
+        border-radius: 12px;
+        font-size: 0.85rem;
+        font-weight: 500;
+    }
+
+    .status-active {
+        background: #e6f4ea;
+        color: #2e7d32;
+    }
+
+    .status-upcoming {
+        background: #fff3e0;
+        color: #f57c00;
+    }
+
+    .status-inactive {
+        background: #ffebee;
+        color: #d32f2f;
+    }
+
+    /* Пагинация */
+    .pagination {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 1rem;
+        margin-top: 1.5rem;
+    }
+
+    .page-info {
+        font-size: 0.95rem;
+        color: #555;
+    }
+
+    .btn-prev,
+    .btn-next {
+        background: #f5f5f5;
+        color: #333;
+    }
+
+    .btn-prev:hover,
+    .btn-next:hover {
+        background: #e0e0e0;
+    }
+
+    .btn-prev:disabled,
+    .btn-next:disabled {
+        background: #f0f0f0;
+        color: #aaa;
+        cursor: not-allowed;
+    }
+
+    /* Кнопки */
+    .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.5rem 1rem;
+        border: none;
+        border-radius: 8px;
+        font-size: 0.9rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: background 0.3s ease, transform 0.1s ease;
+    }
+
+    .btn-primary {
+        background: #007bff;
+        color: #fff;
+    }
+
+    .btn-primary:hover {
+        background: #0056b3;
+        transform: translateY(-1px);
+    }
+
+    .btn-edit {
+        background: #28a745;
+        color: #fff;
+    }
+
+    .btn-edit:hover {
+        background: #218838;
+        transform: translateY(-1px);
+    }
+
+    .btn-delete {
+        background: #dc3545;
+        color: #fff;
+    }
+
+    .btn-delete:hover {
+        background: #c82333;
+        transform: translateY(-1px);
+    }
+
+    .btn:active {
+        transform: translateY(0);
+    }
+
+
+
+
+
+  /* Стили для меток статуса */
+.status-badge {
+    display: inline-block;
+    padding: 6px 12px;
+    border-radius: 12px;
+    font-size: 13px;
+    font-weight: 500;
+    text-transform: capitalize;
+    cursor: default;
+
+}
+
+.status-badge.clickable {
+    cursor: pointer;
+}
+
+
+
+/* Цвета для статусов */
+.status-pending {
+    background-color: #ffeeba;
+    color: #856404;
+}
+
+.status-confirmed {
+    background-color: #d4edda;
+    color: #155724;
+}
+
+.status-cancelled {
+    background-color: #f8d7da;
+    color: #721c24;
+}
+
+/* Стили для кнопки удаления */
+.btn-delete {
+    background: none;
+    border: none;
+    color: #7e7e7e;
+    font-size: 16px;
+    padding: 8px;
+    cursor: pointer;
+
+}
+
+
+/* Общие стили для админ-панели */
+.admin-card {
+    background: var(--white);
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+}
+
+.admin-section {
+    margin-bottom: 1.5rem;
+}
+
+.admin-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem 0;
+    border-bottom: 1px solid var(--medium-gray);
+}
+
+.admin-header h3 {
+    font-size: 1.2rem;
+    font-weight: 600;
+    color: var(--secondary-color);
+    margin: 0;
+}
+
+.toggle-form-btn {
+    background: none;
+    border: none;
+    color: var(--dark-gray);
+    font-size: 1rem;
+    cursor: pointer;
+    transition: transform 0.3s ease, color 0.2s ease;
+}
+
+.toggle-form-btn:hover {
+    color: var(--primary-color);
+}
+
+.toggle-form-btn.active {
+    transform: rotate(180deg);
+}
+
+/* Фильтры */
+.admin-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.filter-group {
+    flex: 1;
+    min-width: 200px;
+}
+
+.filter-group label {
+    display: block;
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--dark-gray);
+    margin-bottom: 0.25rem;
+}
+
+.filter-group input,
+.filter-group select {
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--medium-gray);
+    border-radius: 6px;
+    font-size: 0.9rem;
+    color: var(--black);
+    background: var(--white);
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.filter-group input:focus,
+.filter-group select:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.2);
+}
+
+/* Стили таблицы */
+.admin-table table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    background: var(--white);
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.admin-table th,
+.admin-table td {
+    padding: 0.75rem 1rem;
+    text-align: left;
+    font-size: 0.9rem;
+    color: var(--black);
+}
+
+.admin-table th {
+    background: var(--light-gray);
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 0.8rem;
+    color: var(--dark-gray);
+}
+
+.admin-table td {
+    border-bottom: 1px solid var(--medium-gray);
+}
+
+.admin-table tr:last-child td {
+    border-bottom: none;
+}
+
+.admin-table tr {
+    transition: background 0.2s ease;
+}
+
+.admin-table tr:hover {
+    background: rgba(52, 152, 219, 0.05);
+}
+
+
+
+
+
+/* Стили для select элемента изменения статуса */
+.status-select {
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    background-color: var(--white);
+    border: 1px solid var(--medium-gray);
+    border-radius: 6px;
+    padding: 8px 24px 8px 12px;
+    font-size: 0.9rem;
+    color: var(--black);
+    width: 140px;
+    cursor: pointer;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236c757d' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+}
+
+/* Ховер эффект */
+.status-select:hover {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.2);
+}
+
+/* Фокус */
+.status-select:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.2);
+}
+
+/* Разные цвета для статусов в выпадающем списке */
+.status-select option[value="pending"] {
+    background-color: var(--white);
+    color: var(--black);
+}
+
+.status-select option[value="confirmed"] {
+    background-color: var(--white);
+    color: var(--black);
+}
+
+.status-select option[value="cancelled"] {
+    background-color: var(--white);
+    color: var(--black);
+}
+
+/* Анимация при выборе статуса */
+@keyframes statusChange {
+    0% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.03);
+    }
+    100% {
+        transform: scale(1);
+    }
+}
+
+.status-select.changed {
+    animation: statusChange 0.3s ease;
+}
+
+/* Стили для бейджей статуса в таблице */
+.status-badge {
+    padding: 5px 10px;
+    border-radius: 12px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    display: inline-block;
+    transition: background-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+/* Стили для кликабельных бейджей */
+.status-badge.clickable {
+    cursor: pointer;
+}
+
+.status-badge.clickable:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.status-pending {
+    background-color: rgba(255, 193, 7, 0.15); /* Легкий желтый фон */
+    color: #856404;
+}
+
+.status-confirmed {
+    background-color: rgba(76, 175, 80, 0.15); /* Легкий зеленый фон */
+    color: #155724;
+}
+
+.status-cancelled {
+    background-color: rgba(244, 67, 54, 0.15); /* Легкий красный фон */
+    color: #721c24;
+}
+
+/* Мелкие улучшения для таблицы */
+.admin-table td {
+    padding: 0.75rem 1rem;
+    vertical-align: middle;
+}
+
+.admin-table td select {
+    margin: 0;
+}
+
+/* Адаптивность */
+@media (max-width: 768px) {
+    .status-select {
+        width: 120px;
+        padding: 6px 20px 6px 10px;
+        font-size: 0.85rem;
+    }
+
+    .status-badge {
+        padding: 4px 8px;
+        font-size: 0.8rem;
+    }
+}
+
+
+/* Общие стили для секции bookings */
+#bookings {
+    padding: 24px;
+    background: #ffffff;
+}
+
+/* Контейнер для карточек */
+#bookings .card {
+    display: grid;
+    gap: 16px;
+    max-width: 1000px;
+    margin: 0 auto;
+}
+
+/* Заголовок секции */
+#bookings h2 {
+    font-size: 1.75rem;
+    font-weight: 600;
+    color: #1a1a1a;
+    margin-bottom: 24px;
+    text-align: left;
+}
+
+/* Стили для trip-card */
+.trip-card {
+    display: grid;
+    grid-template-columns: 120px 1fr auto;
+    background: #ffffff;
+    border: 1px solid #e5e5e5;
+    border-radius: 8px;
+    overflow: hidden;
+    transition: border-color 0.2s ease;
+    animation: slideIn 0.4s ease forwards;
+}
+
+.trip-card:hover {
+    border-color: #007bff;
+}
+
+/* Изображение тура */
+.trip-image {
+    width: 120px;
+    height: 100px;
+    object-fit: cover;
+}
+
+/* Информация о туре */
+.trip-info {
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+/* Заголовок тура */
+.trip-title {
+    font-size: 1.25rem;
+    font-weight: 500;
+    color: #1a1a1a;
+    margin: 0;
+    line-height: 1.4;
+}
+
+/* Описание тура */
+.trip-description {
+    font-size: 0.875rem;
+    color: #666;
+    line-height: 1.5;
+    margin: 0;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+/* Мета-информация */
+.trip-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 0.8125rem;
+    color: #4a4a4a;
+}
+
+/* Даты и цена */
+.trip-date, .appointment-date, .total-price {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.trip-date i, .appointment-date i, .total-price i {
+    color: #007bff;
+    font-size: 0.875rem;
+}
+
+/* Статус */
+.status-badge {
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    text-transform: uppercase;
+    line-height: 1;
+}
+
+.status-pending {
+    background: #e6f0fa;
+    color: #004085;
+}
+
+.status-confirmed {
+    background: #e6f4ea;
+    color: #155724;
+}
+
+.status-cancelled {
+    background: #f8e9e9;
+    color: #721c24;
+}
+
+/* Действия */
+.trip-actions {
+    padding: 16px;
+    display: flex;
+    align-items: center;
+}
+
+/* Кнопка отмены */
+.cancel-btn {
+    background: transparent;
+    color: #dc3545;
+    border: 1px solid #dc3545;
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.2s ease, color 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.cancel-btn:hover {
+    background: #dc3545;
+    color: #ffffff;
+}
+
+.cancel-btn:disabled {
+    color: #6c757d;
+    border-color: #6c757d;
+    cursor: not-allowed;
+}
+
+.cancel-btn.loading {
+    opacity: 0.6;
+}
+
+/* Пустое состояние */
+.no-bookings {
+    text-align: center;
+    padding: 48px;
+    background: #ffffff;
+    border: 1px solid #e5e5e5;
+    border-radius: 8px;
+    max-width: 400px;
+    margin: 0 auto;
+}
+
+.no-bookings i {
+    font-size: 2rem;
+    color: #6c757d;
+    margin-bottom: 12px;
+}
+
+.no-bookings p {
+    font-size: 1rem;
+    color: #4a4a4a;
+    margin: 0 0 16px;
+}
+
+.no-bookings .btn-primary {
+    background: #007bff;
+    color: #ffffff;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    text-decoration: none;
+    transition: background 0.2s ease;
+}
+
+.no-bookings .btn-primary:hover {
+    background: #0056b3;
+}
+
+/* Анимация появления */
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Адаптивность */
+@media (max-width: 768px) {
+    .trip-card {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto 1fr auto;
+    }
+
+    .trip-image {
+        width: 100%;
+        height: 160px;
+    }
+
+    .trip-info {
+        padding: 12px;
+    }
+
+    .trip-actions {
+        padding: 12px;
+        justify-content: flex-start;
+    }
+
+    .trip-title {
+        font-size: 1.125rem;
+    }
+
+    .trip-description {
+        font-size: 0.8125rem;
+    }
+}
+
+@media (max-width: 576px) {
+    #bookings {
+        padding: 16px;
+    }
+
+    #bookings h2 {
+        font-size: 1.5rem;
+    }
+
+    .trip-meta {
+        font-size: 0.75rem;
+    }
+
+    .cancel-btn {
+        width: 100%;
+        justify-content: center;
+    }
+}
+
+
+/* Общие стили для секции settings */
+#settings {
+    padding: 24px;
+    background: #ffffff;
+}
+
+/* Контейнер для формы */
+#settings .card {
+    max-width: 600px;
+    margin: 0 auto;
+    background: #ffffff;
+    border: 1px solid #e5e5e5;
+    border-radius: 8px;
+    padding: 24px;
+    animation: slideIn 0.4s ease forwards;
+}
+
+/* Заголовок секции */
+#settings h2 {
+    font-size: 1.75rem;
+    font-weight: 600;
+    color: #1a1a1a;
+    margin-bottom: 24px;
+    text-align: left;
+}
+
+/* Форма профиля */
+.profile-form {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+/* Группа полей */
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.form-group label {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #1a1a1a;
+}
+
+/* Поля ввода */
+.form-group input[type="text"],
+.form-group input[type="email"],
+.form-group input[type="password"] {
+    padding: 10px;
+    border: 1px solid #e5e5e5;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    color: #1a1a1a;
+    background: #fafafa;
+    transition: border-color 0.2s ease;
+}
+
+.form-group input:focus {
+    outline: none;
+    border-color: #007bff;
+    background: #ffffff;
+}
+
+/* Аватар */
+.avatar-group {
+    align-items: center;
+    gap: 12px;
+}
+
+.avatar-preview {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    overflow: hidden;
+    border: 1px solid #e5e5e5;
+}
+
+.avatar-preview img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.form-group input[type="file"] {
+    display: none;
+}
+
+#upload-avatar-btn {
+    background: #f8f9fa;
+    color: #007bff;
+    border: 1px solid #e5e5e5;
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.2s ease, color 0.2s ease;
+}
+
+#upload-avatar-btn:hover {
+    background: #007bff;
+    color: #ffffff;
+}
+
+/* Кнопка сохранения */
+.btn-primary {
+    background: #007bff;
+    color: #ffffff;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.2s ease;
+    align-self: flex-start;
+}
+
+.btn-primary:hover {
+    background: #0056b3;
+}
+
+.btn-primary:disabled {
+    background: #6c757d;
+    cursor: not-allowed;
+}
+
+.btn-primary.loading {
+    opacity: 0.6;
+}
+
+/* Анимация появления */
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Адаптивность */
+@media (max-width: 576px) {
+    #settings {
+        padding: 16px;
+    }
+
+    #settings h2 {
+        font-size: 1.5rem;
+    }
+
+    #settings .card {
+        padding: 16px;
+    }
+
+    .btn-primary {
+        width: 100%;
+        text-align: center;
+    }
+
+    .avatar-preview {
+        width: 60px;
+        height: 60px;
+    }
+}
         .dashboard-content {
             display: flex;
             flex-direction: column;
