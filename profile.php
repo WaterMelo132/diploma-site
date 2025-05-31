@@ -3,6 +3,7 @@
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
+require_once('navbar.php'); // Подключает config.php, где есть $conn
 
 // Убедимся, что сессия стартована
 if (session_status() === PHP_SESSION_NONE) {
@@ -430,7 +431,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' &&
     }
 }
 
-include($_SERVER['DOCUMENT_ROOT'].'navbar.php');
+
 
 function formatStatus($status) {
     switch ($status) {
