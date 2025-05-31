@@ -12,9 +12,9 @@ if (file_exists($navbar_path)) {
 }
 
 // Подключение к базе данных
-$servername = "localhost";
-$username = "root";
-$password = "";
+$servername = "db4free.net";
+$username = "myusername";
+$password = "EVu-Nec-y2k-rC3";
 $dbname = "travel_agency";
 $conn = new mysqli($servername, $username, $password, $dbname);
 
