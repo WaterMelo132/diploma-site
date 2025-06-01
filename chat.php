@@ -1,5 +1,5 @@
 <?php
-// /travel/php/chat.php
+ob_start(); 
 session_start();
 require_once __DIR__ . '/config.php';
 require_once('navbar.php'); // Подключает config.php, где есть $conn
