@@ -2,6 +2,7 @@
 // /travel/php/chat.php
 session_start();
 require_once __DIR__ . '/config.php';
+require_once('navbar.php'); // Подключает config.php, где есть $conn
 
 // Проверка авторизации
 if (!isset($_SESSION['user_id'])) {
@@ -121,7 +122,7 @@ if ($user_role === 'admin') {
     <title>Чат</title>
     <link href="https://fonts.googleapis.com/css2?family=Material+Icons+Outlined" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link href="/travel/css/navbar.css" rel="stylesheet">
+
     <style>
         :root {
             --bg-color: #f8fafc;
@@ -444,7 +445,7 @@ if ($user_role === 'admin') {
     </style>
 </head>
 <body>
-    <?php include __DIR__ . '/navbar.php'; ?>
+
     
     <div class="chat-container">
         <div class="chat-header">

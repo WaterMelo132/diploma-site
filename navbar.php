@@ -26,8 +26,11 @@ if (isset($_SESSION['user_id'])) {
     <!-- Убрали подключение navbar.css, так как он ранее не находился -->
 </head>
 <style>
+    body {
+    padding-top: 80px !important; /* 60px (высота навбара) + 20px (top) */
+}
     .itravel-navbar {
-    z-index: 9999 !important;
+    z-index: 1000 !important;
     position: fixed !important;
     top: 20px !important;
     left: 0 !important;
@@ -449,9 +452,7 @@ if (isset($_SESSION['user_id'])) {
                 <span>Войти</span>
             </a>
         <?php endif; ?>
-        <button class="itravel-theme-toggle">
-            <span class="material-icons-outlined">brightness_6</span>
-        </button>
+       
     </div>
     <canvas class="itravel-navbar-bg"></canvas>
 </header>
