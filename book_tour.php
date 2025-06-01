@@ -1,5 +1,5 @@
 <?php
-// Убедитесь, что перед <?php нет пробелов или пустых строк
+ob_start(); // Включаем буферизацию вывода
 session_start();
 error_reporting(E_ALL);
 ini_set('display_errors', 0);
@@ -11,9 +11,9 @@ header('Cache-Control: no-cache, must-revalidate');
 
 // Конфигурация базы данных
 $db_config = [
-    'host' => 'localhost',
-    'user' => 'root',
-    'pass' => '',
+    'host' => 'db4free.net',
+    'user' => 'myusername',
+    'pass' => 'EVu-Nec-y2k-rC3',
     'name' => 'travel_agency'
 ];
 
@@ -29,19 +29,13 @@ try {
     debug_log("Session ID: " . session_id());
     debug_log("Session user_id: " . (isset($_SESSION['user_id']) ? $_SESSION['user_id'] : 'not set'));
 
-    // Проверка авторизации
     if (!isset($_SESSION['user_id']) || empty($_SESSION['user_id'])) {
-        debug_log("Неавторизованный доступ");
-        http_response_code(403);
-        echo json_encode(['success' => false, 'message' => 'Требуется авторизация']);
-        exit;
+        throw new Exception('Требуется авторизация');
     }
 
-    // Получение и логирование сырого ввода
     $raw_input = file_get_contents('php://input');
     debug_log("Raw input: " . $raw_input);
 
-    // Декодирование JSON
     $input = json_decode($raw_input, true);
     if ($input === null && $raw_input !== '') {
         debug_log("JSON decode error: " . json_last_error_msg());
@@ -52,7 +46,6 @@ try {
         throw new Exception('Пустой запрос');
     }
 
-    // Проверка обязательных полей
     $required_fields = ['travel_id', 'name', 'phone', 'email', 'persons'];
     foreach ($required_fields as $field) {
         if (!isset($input[$field]) || ($field !== 'persons' && empty(trim($input[$field])))) {
@@ -68,10 +61,10 @@ try {
     $price = isset($input['price']) ? (float)$input['price'] : null;
     $package_id = isset($input['package_id']) && $input['package_id'] !== null ? (int)$input['package_id'] : null;
     $user_id = (int)$_SESSION['user_id'];
+    $status = 'pending'; // Статус "в обработке"
 
-    debug_log("Полученные данные: travel_id=$travel_id, name=$name, phone=$phone, email=$email, persons=$persons, price=" . ($price !== null ? $price : 'null') . ", package_id=" . ($package_id !== null ? $package_id : 'null') . ", user_id=$user_id");
+    debug_log("Полученные данные: travel_id=$travel_id, name=$name, phone=$phone, email=$email, persons=$persons, price=" . ($price ?? 'null') . ", package_id=" . ($package_id ?? 'null') . ", user_id=$user_id, status=$status");
 
-    // Валидация данных
     if ($travel_id <= 0) {
         throw new Exception('Некорректный ID тура');
     }
@@ -88,14 +81,12 @@ try {
         throw new Exception('Количество человек должно быть от 1 до 10');
     }
 
-    // Подключение к базе данных
     $conn = new mysqli($db_config['host'], $db_config['user'], $db_config['pass'], $db_config['name']);
     if ($conn->connect_error) {
         debug_log("Ошибка подключения к БД: " . $conn->connect_error);
         throw new Exception('Ошибка подключения к базе данных');
     }
 
-    // Проверка существования travel_id и получение цены
     $stmt = $conn->prepare("SELECT price, start_date, status FROM travels WHERE id = ?");
     if (!$stmt) {
         debug_log("Ошибка подготовки запроса (travels): " . $conn->error);
@@ -110,7 +101,6 @@ try {
     $tour = $result->fetch_assoc();
     $stmt->close();
 
-    // Определяем цену, если не передана
     if ($price === null || $price <= 0) {
         $tour_price = isset($tour['price']) ? (float)$tour['price'] : 0;
         try {
@@ -134,22 +124,21 @@ try {
         debug_log("Передана цена: price=$price");
     }
 
-    // Проверка package_id, если указан
     if ($package_id !== null) {
-        $stmt = $conn->prepare("SELECT package_id FROM packages WHERE package_id = ?");
+        $stmt = $conn->prepare("SELECT id FROM packages WHERE id = ?");
         if (!$stmt) {
             debug_log("Ошибка подготовки запроса (packages): " . $conn->error);
             throw new Exception('Ошибка подготовки запроса');
         }
         $stmt->bind_param('i', $package_id);
         $stmt->execute();
-        if ($stmt->get_result()->num_rows === 0) {
+        $result = $stmt->get_result();
+        if ($result->num_rows === 0) {
             throw new Exception('Пакет не существует');
         }
         $stmt->close();
     }
 
-    // Проверка user_id
     $stmt = $conn->prepare("SELECT id FROM users WHERE id = ?");
     if (!$stmt) {
         debug_log("Ошибка подготовки запроса (users): " . $conn->error);
@@ -157,46 +146,89 @@ try {
     }
     $stmt->bind_param('i', $user_id);
     $stmt->execute();
-    if ($stmt->get_result()->num_rows === 0) {
+    $result = $stmt->get_result();
+    if ($result->num_rows === 0) {
         debug_log("Пользователь не существует: user_id=$user_id");
         throw new Exception('Пользователь не существует');
     }
     $stmt->close();
 
-    // Вставка бронирования
+    $stmt = $conn->prepare("SELECT id FROM tour_bookings WHERE user_id = ? AND travel_id = ?");
+    if (!$stmt) {
+        debug_log("Ошибка подготовки запроса (tour_bookings check): " . $conn->error);
+        throw new Exception('Ошибка подготовки запроса');
+    }
+    $stmt->bind_param('ii', $user_id, $travel_id);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    if ($result->num_rows > 0) {
+        debug_log("Бронирование уже существует: user_id=$user_id, travel_id=$travel_id");
+        throw new Exception('Вы уже забронировали этот тур');
+    }
+    $stmt->close();
+
     $stmt = $conn->prepare("
-        INSERT INTO tour_bookings (travel_id, name, phone, email, package_id, user_id, persons, price, created_at) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, NOW())
+        INSERT INTO tour_bookings (travel_id, name, phone, email, package_id, user_id, persons, price, status, created_at) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
     ");
     if (!$stmt) {
         debug_log("Ошибка подготовки INSERT: " . $conn->error);
         throw new Exception('Ошибка подготовки запроса');
     }
-    // Корректируем bind_param для правильного количества переменных
-    $stmt->bind_param('isssiidd', $travel_id, $name, $phone, $email, $package_id, $user_id, $persons, $price);
 
+    $stmt->bind_param('isssiidds', $travel_id, $name, $phone, $email, $package_id, $user_id, $persons, $price, $status);
     if (!$stmt->execute()) {
         debug_log("Ошибка выполнения INSERT: " . $stmt->error);
-        throw new Exception('Ошибка выполнения запроса');
+        throw new Exception('Ошибка выполнения запроса: ' . $stmt->error);
     }
 
-    debug_log("Бронирование создано: travel_id=$travel_id, price=$price, persons=$persons, user_id=$user_id");
-    $response = ['success' => true, 'message' => 'Бронирование успешно создано'];
+    debug_log("Бронирование создано: travel_id=$travel_id, price=$price, persons=$persons, user_id=$user_id, status=$status");
+    $response = [
+        'success' => true,
+        'message' => 'Бронирование успешно создано',
+    ];
 
 } catch (Exception $e) {
-    debug_log("Ошибка: " . $e->getMessage());
-    http_response_code(400);
-    $response = ['success' => false, 'message' => $e->getMessage()];
+    $error_message = $e->getMessage();
+    $error_code = 400;
+    $error_type = 'validation_error';
+
+    if (stripos($error_message, 'авторизация') !== false) {
+        $error_type = 'auth_error';
+        $error_code = 403;
+    } elseif (stripos($error_message, 'внутренняя') !== false) {
+        $error_type = 'server_error';
+        $error_code = 500;
+    } elseif (stripos($error_message, 'существует') !== false) {
+        $error_type = 'not_found';
+        $error_code = 404;
+    }
+
+    debug_log("Ошибка [$error_type]: $error_message");
+
+    http_response_code($error_code);
+    $response = [
+        'success' => false,
+        'message' => $error_message,
+        'type' => $error_type,
+        'code' => $error_code
+    ];
 } catch (Throwable $t) {
     debug_log("Критическая ошибка: " . $t->getMessage() . " в файле " . $t->getFile() . " на строке " . $t->getLine());
     http_response_code(500);
-    $response = ['success' => false, 'message' => 'Внутренняя ошибка сервера'];
+    $response = [
+        'success' => false,
+        'message' => 'Внутренняя ошибка сервера',
+        'type' => 'fatal_error',
+        'code' => 500
+    ];
 } finally {
     if ($conn !== null) {
         $conn->close();
     }
     debug_log("Конец обработки запроса");
+    // Очищаем буфер и отправляем только JSON
+    ob_end_clean();
+    echo json_encode($response, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 }
-
-echo json_encode($response);
 ?>

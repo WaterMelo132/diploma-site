@@ -1,7 +1,8 @@
+
 <?php
 $current = basename($_SERVER['PHP_SELF']);
 // Подключаем конфигурацию
-require_once __DIR__.'/config.php';
+require_once __DIR__ . '/config.php';
 
 // Проверяем авторизацию
 $user_email = '';
@@ -15,16 +16,6 @@ if (isset($_SESSION['user_id'])) {
 }
 ?>
 
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Stylish Navigation</title>
-    <link href="https://fonts.googleapis.com/css2?family=Material+Icons+Outlined" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500&display=swap" rel="stylesheet">
-    <!-- Убрали подключение navbar.css, так как он ранее не находился -->
-</head>
 <style>
     body {
     padding-top: 80px !important; /* 60px (высота навбара) + 20px (top) */
@@ -99,7 +90,7 @@ if (isset($_SESSION['user_id'])) {
     }
 
     :where(.itravel-brand-name:hover) {
-        color: #4CAF50 !important;
+        color:rgb(5, 100, 155) !important;
     }
 
     :where(.itravel-brand-name::after) {
@@ -149,7 +140,7 @@ if (isset($_SESSION['user_id'])) {
 }
 
 .itravel-nav-link:hover {
-    color: #ffffff !important;
+    color:rgb(255, 255, 255) !important;
     transform: translateY(-2px) !important;
     cursor: pointer !important; /* Убеждаемся, что hover тоже включает курсор */
 }
@@ -185,7 +176,7 @@ if (isset($_SESSION['user_id'])) {
 
     :where(.itravel-nav-link.itravel-active) {
         color: #ffffff !important;
-        background: rgba(76, 175, 80, 0.3) !important;
+        background: rgba(0, 166, 255, 0.3) !important;
         position: relative !important;
     }
 
@@ -197,7 +188,7 @@ if (isset($_SESSION['user_id'])) {
         left: 0 !important;
         width: 100% !important;
         height: 2px !important;
-        background: #4CAF50 !important;
+        background:rgb(0, 51, 255) !important;
         animation: underline 0.5s ease forwards !important;
     }
 
@@ -212,7 +203,7 @@ if (isset($_SESSION['user_id'])) {
 
     /* Эффект свечения */
     :where(.itravel-nav-link.itravel-active) {
-        box-shadow: 0 0 8px rgba(76, 175, 80, 0.5) !important;
+        box-shadow: 0 0 8px rgba(20, 212, 255, 0.5) !important;
     }
 
     /* Анимация иконок */
@@ -224,7 +215,7 @@ if (isset($_SESSION['user_id'])) {
     :where(.itravel-brand-name:hover .itravel-icon-pulse),
     :where(.itravel-login-link:hover .itravel-icon-pulse) {
         transform: scale(1.2) rotate(10deg) !important;
-        color: #4CAF50 !important;
+        color:rgb(0, 34, 255) !important;
     }
 
     /* Email пользователя */
@@ -249,7 +240,7 @@ if (isset($_SESSION['user_id'])) {
         all: initial !important;
         display: flex !important;
         align-items: center !important;
-        color: #4CAF50 !important;
+        color:rgb(0, 157, 255) !important;
         text-decoration: none !important;
         font-family: 'Roboto', sans-serif !important;
         font-weight: 400 !important;
@@ -301,7 +292,7 @@ if (isset($_SESSION['user_id'])) {
     }
 
     :where(.itravel-mobile-menu-btn:hover) {
-        color: #4CAF50 !important;
+        color:rgb(0, 162, 255) !important;
     }
 
     /* Адаптивность для мобильных устройств */
@@ -403,7 +394,8 @@ if (isset($_SESSION['user_id'])) {
         opacity: 0.3 !important;
     }
 </style>
-<body>
+ <link href="https://fonts.googleapis.com/css2?family=Material+Icons+Outlined" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500&display=swap" rel="stylesheet">
 <header class="itravel-navbar itravel-animate-on-load">
     <div class="itravel-nav-container">
         <div class="itravel-brand-name">
@@ -442,25 +434,24 @@ if (isset($_SESSION['user_id'])) {
             </a>
         </nav>
         
-        <?php if(isset($_SESSION['user_id'])): ?>
+        <?php if (isset($_SESSION['user_id'])): ?>
             <div class="itravel-user-email">
                 <?= htmlspecialchars($user_email) ?>
             </div>
         <?php else: ?>
-            <a href="/travel/login.php" class="itravel-login-link">
+            <a href="login.php" class="itravel-login-link">
                 <span class="material-icons-outlined itravel-icon-pulse">login</span>
                 <span>Войти</span>
             </a>
         <?php endif; ?>
-       
     </div>
     <canvas class="itravel-navbar-bg"></canvas>
 </header>
 
 <script>
-// Управление скроллом
+// JavaScript код остается без изменений
 window.addEventListener('scroll', () => {
-    const navbar = document.querySelector('.itravel-navbar'); // Используем правильный класс
+    const navbar = document.querySelector('.itravel-navbar');
     if (navbar && window.scrollY > 50) {
         navbar.classList.add('itravel-scrolled');
     } else if (navbar) {
@@ -468,7 +459,6 @@ window.addEventListener('scroll', () => {
     }
 });
 
-// Управление мобильным меню
 const mobileMenuBtn = document.querySelector('.itravel-mobile-menu-btn');
 const navLinks = document.querySelector('.itravel-nav-links');
 if (mobileMenuBtn && navLinks) {
@@ -477,27 +467,10 @@ if (mobileMenuBtn && navLinks) {
     });
 }
 
-
-
-// Переключение темы
-const themeToggle = document.querySelector('.itravel-theme-toggle');
-themeToggle.addEventListener('click', () => {
-    document.body.classList.toggle('itravel-light-theme');
-    localStorage.setItem('theme', document.body.classList.contains('itravel-light-theme') ? 'light' : 'dark');
-});
-
-// Загрузка сохраненной темы
-if (localStorage.getItem('theme') === 'light') {
-    document.body.classList.add('itravel-light-theme');
-}
-
-// Анимация частиц
 const canvas = document.querySelector('.itravel-navbar-bg');
 const ctx = canvas.getContext('2d');
-
 canvas.width = window.innerWidth;
-canvas.height = 60; // Высота панели
-
+canvas.height = 60;
 const particles = [];
 const particleCount = 20;
 
@@ -509,15 +482,12 @@ class Particle {
         this.speedX = Math.random() * 0.5 - 0.25;
         this.speedY = Math.random() * 0.5 - 0.25;
     }
-
     update() {
         this.x += this.speedX;
         this.y += this.speedY;
-
         if (this.x < 0 || this.x > canvas.width) this.speedX *= -1;
         if (this.y < 0 || this.y > canvas.height) this.speedY *= -1;
     }
-
     draw() {
         ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
         ctx.beginPath();
@@ -541,11 +511,8 @@ function animateParticles() {
 
 animateParticles();
 
-// Адаптация при изменении размера окна
 window.addEventListener('resize', () => {
     canvas.width = window.innerWidth;
     canvas.height = 60;
 });
 </script>
-</body>
-</html>

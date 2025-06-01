@@ -1,3 +1,6 @@
+
+
+
 <?php
 header('Permissions-Policy: interest-cohort=()');
 session_start();
@@ -10,29 +13,10 @@ if (!isset($conn) || $conn->connect_error) {
     die(json_encode(['error' => 'Database connection failed']));
 }
 
-// Получаем все туры для слайд-шоу
-$tours = [];
-$sql = "SELECT * FROM travels";
-$result = $conn->query($sql);
-
-while ($row = $result->fetch_assoc()) {
-    $tours[] = $row;
-}
-
 try {
-    $servername = "db4free.net";
-$username = "myusername";
-$password = "EVu-Nec-y2k-rC3";
-$dbname = "travel_agency";
-$conn = new mysqli($servername, $username, $password, $dbname);
-    
-    if ($conn->connect_error) {
-        throw new Exception('Ошибка подключения к базе данных: ' . $conn->connect_error);
-    }
-    
     // Увеличиваем лимит GROUP_CONCAT
     $conn->query("SET SESSION group_concat_max_len = 1000000;");
-    
+
     $query = "
         SELECT 
             t.id, 
@@ -40,47 +24,47 @@ $conn = new mysqli($servername, $username, $password, $dbname);
             COALESCE(t.destination, 'Unknown Destination') as destination, 
             COALESCE(t.price, 0) as price, 
             COALESCE(t.status, 'inactive') as status, 
-            COALESCE(t.image, '/images/placeholder.jpg') as image, 
-            COALESCE(t.images, '/images/placeholder.jpg') as images, 
+            COALESCE(t.image, '/travel/images/placeholder.jpg') as image, 
+            COALESCE(t.images, '/travel/images/placeholder.jpg') as images, 
             COALESCE(t.description, '') as description, 
             t.start_date, 
             t.end_date, 
             COALESCE(t.transport_type, '') as transport_type, 
             COALESCE(t.transport_type_en, '') as transport_type_en, 
             COALESCE(t.transport_details, '') as transport_details,
-            GROUP_CONCAT(DISTINCT p.package_id ORDER BY p.package_id SEPARATOR ',') as package_ids,
-            GROUP_CONCAT(DISTINCT COALESCE(p.name, 'Без названия') ORDER BY p.package_id SEPARATOR ',') as package_names,
-            GROUP_CONCAT(DISTINCT COALESCE(p.description, '') ORDER BY p.package_id SEPARATOR ',') as package_descriptions,
-            GROUP_CONCAT(DISTINCT COALESCE(p.price, 0) ORDER BY p.package_id SEPARATOR ',') as package_prices,
+            GROUP_CONCAT(DISTINCT p.id ORDER BY p.id SEPARATOR ',') as package_ids,
+            GROUP_CONCAT(DISTINCT COALESCE(p.name, 'Без названия') ORDER BY p.id SEPARATOR ',') as package_names,
+            GROUP_CONCAT(DISTINCT COALESCE(p.description, '') ORDER BY p.id SEPARATOR ',') as package_descriptions,
+            GROUP_CONCAT(DISTINCT COALESCE(p.price, 0) ORDER BY p.id SEPARATOR ',') as package_prices,
             GROUP_CONCAT(
                 (SELECT GROUP_CONCAT(s.id ORDER BY s.id SEPARATOR ';')
                  FROM package_services ps
                  JOIN services s ON ps.service_id = s.id
-                 WHERE ps.package_id = p.package_id)
-                ORDER BY p.package_id SEPARATOR ','
+                 WHERE ps.package_id = p.id)
+                ORDER BY p.id SEPARATOR ','
             ) as service_ids,
             GROUP_CONCAT(
                 (SELECT GROUP_CONCAT(COALESCE(s.name, 'Без названия') ORDER BY s.id SEPARATOR ';')
                  FROM package_services ps
                  JOIN services s ON ps.service_id = s.id
-                 WHERE ps.package_id = p.package_id)
-                ORDER BY p.package_id SEPARATOR ','
+                 WHERE ps.package_id = p.id)
+                ORDER BY p.id SEPARATOR ','
             ) as service_names
         FROM travels t
         LEFT JOIN tour_packages tp ON t.id = tp.tour_id
-        LEFT JOIN packages p ON tp.package_id = p.package_id
+        LEFT JOIN packages p ON tp.package_id = p.id
         GROUP BY t.id
     ";
     $stmt = $conn->prepare($query);
-    
+
     if (!$stmt) {
         throw new Exception('Ошибка подготовки запроса: ' . $conn->error);
     }
-    
+
     $stmt->execute();
     $result = $stmt->get_result();
     $tours = $result->fetch_all(MYSQLI_ASSOC);
-    
+
     foreach ($tours as $index => $tour) {
         if ($tour['package_ids']) {
             $package_ids = array_filter(explode(',', $tour['package_ids']));
@@ -89,10 +73,10 @@ $conn = new mysqli($servername, $username, $password, $dbname);
             $package_prices = array_filter(explode(',', $tour['package_prices']));
             $service_ids_raw = $tour['service_ids'] ? explode(',', $tour['service_ids']) : [];
             $service_names_raw = $tour['service_names'] ? explode(',', $tour['service_names']) : [];
-            
+
             $service_ids = array_map(function($ids) { return $ids ? array_filter(explode(';', $ids)) : []; }, $service_ids_raw);
             $service_names = array_map(function($names) { return $names ? array_filter(explode(';', $names)) : []; }, $service_names_raw);
-            
+
             $tours[$index]['packages'] = [];
             $count = min(count($package_ids), count($package_names), count($package_descriptions), count($package_prices));
             for ($i = 0; $i < $count; $i++) {
@@ -123,34 +107,33 @@ $conn = new mysqli($servername, $username, $password, $dbname);
         } else {
             $tours[$index]['packages'] = [];
         }
-        
+
         // Определяем акцию
         $start_date = $tour['start_date'] ? new DateTime($tour['start_date']) : null;
         $today = new DateTime();
         $is_promo = false;
         $days_until_start = null;
-        
+
         if ($start_date && $tour['status'] === 'active') {
             $interval = $today->diff($start_date);
             $days_until_start = $interval->days;
             $is_promo = $days_until_start <= 7 && !$interval->invert;
         }
-        
+
         $tours[$index]['is_promo'] = $is_promo;
         $tours[$index]['original_price'] = (float)$tour['price'];
         $tours[$index]['discount_price'] = $is_promo ? round($tour['price'] * 0.9) : (float)$tour['price'];
-        
+
         unset($tours[$index]['package_ids'], $tours[$index]['package_names'], 
               $tours[$index]['package_descriptions'], $tours[$index]['package_prices'],
               $tours[$index]['service_ids'], $tours[$index]['service_names']);
     }
-    
+
     $destinations = array_unique(array_column($tours, 'destination'));
     sort($destinations);
-    
+
     $stmt->close();
-    $conn->close();
-    
+
 } catch (Exception $e) {
     error_log($e->getMessage());
     echo '<div class="container"><div class="error-message" style="color: red; text-align: center; padding: 2rem;">Ошибка загрузки туров. Пожалуйста, попробуйте позже.</div></div>';
@@ -164,7 +147,7 @@ $conn = new mysqli($servername, $username, $password, $dbname);
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Список туров | Travel Agency</title>
     <meta name="description" content="Выберите лучшие туры для вашего путешествия">
-    
+
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css">
@@ -988,35 +971,27 @@ $conn = new mysqli($servername, $username, $password, $dbname);
             50% { transform: scale(1.02); }
             100% { transform: scale(1); }
         }
-        
+
     </style>
 </head>
 <body>
-
-
 <div class="container">
     <h1 class="page-title">Наши туры</h1>
-    
+
     <?php if ($show_success): ?>
         <div class="success-message show">
             <div class="success-icon"><i class="fas fa-check-circle"></i></div>
             <p>Новый тур успешно добавлен!</p>
         </div>
     <?php endif; ?>
-    
+
     <div class="filters-container">
         <div class="filters-grid">
             <div class="filter-group">
                 <label for="searchInput" class="filter-label">Поиск</label>
-                <input 
-                    type="text" 
-                    id="searchInput" 
-                    class="filter-input"
-                    placeholder="Название или направление..." 
-                    aria-label="Поиск туров"
-                >
+                <input type="text" id="searchInput" class="filter-input" placeholder="Название или направление..." aria-label="Поиск туров">
             </div>
-            
+
             <div class="filter-group">
                 <label for="destinationFilter" class="filter-label">Направление</label>
                 <select id="destinationFilter" class="filter-select">
@@ -1026,7 +1001,7 @@ $conn = new mysqli($servername, $username, $password, $dbname);
                     <?php endforeach; ?>
                 </select>
             </div>
-            
+
             <div class="filter-group">
                 <label for="statusFilter" class="filter-label">Статус</label>
                 <select id="statusFilter" class="filter-select">
@@ -1036,47 +1011,39 @@ $conn = new mysqli($servername, $username, $password, $dbname);
                     <option value="inactive">Недоступен</option>
                 </select>
             </div>
-            
+
             <div class="filter-group">
                 <label class="filter-label">Цена, руб.</label>
                 <div class="price-range-container">
-                    <input 
-                        type="range" 
-                        id="priceFilter" 
-                        class="price-range-input filter-input"
-                        min="0" 
-                        max="<?= max(array_column($tours, 'price')) ?>" 
-                        value="<?= max(array_column($tours, 'price')) ?>"
-                    >
-                    <span id="priceValue" class="price-value">до <?= number_format(max(array_column($tours, 'price')), 0, ',', ' ') ?></span>
+                    <input type="range" id="priceFilter" class="price-range-input filter-input" min="0" max="<?= max(array_column($tours, 'discount_price')) ?>" value="<?= max(array_column($tours, 'discount_price')) ?>">
+                    <span id="priceValue" class="price-value">до <?= number_format(max(array_column($tours, 'discount_price')), 0, ',', ' ') ?></span>
                 </div>
             </div>
         </div>
-        
+
         <button id="resetFilters" class="reset-filters">
             <i class="fas fa-redo"></i>
             Сбросить фильтры
         </button>
     </div>
-    
+
     <div id="tourCardsContainer" class="tour-cards-container">
         <?php foreach ($tours as $index => $tour): ?>
-    <?php error_log('Tour Image Path: ' . $tour['image']); ?>
-    <div class="tour-card <?php echo $tour['is_promo'] ? 'promo' : ''; ?> card-delay-<?= ($index % 5) + 1 ?>" 
-         data-id="<?= $tour['id'] ?>" 
-         data-destination="<?= htmlspecialchars($tour['destination']) ?>" 
-         data-status="<?= htmlspecialchars($tour['status']) ?>" 
-         data-price="<?= $tour['discount_price'] ?>">
-        <?php if ($tour['is_promo']): ?>
-            <span class="promo-badge">Акция!</span>
-        <?php endif; ?>
-       <img 
-    src="<?php echo htmlspecialchars(ltrim($tour['image'], '/')); ?>" 
-    alt="<?php echo htmlspecialchars($tour['title']); ?>" 
-    class="tour-image"
-    loading="lazy"
-    onerror="this.src='images/placeholder.jpg'"
->
+            <div class="tour-card <?php echo $tour['is_promo'] ? 'promo' : ''; ?> card-delay-<?= ($index % 5) + 1 ?>" 
+                 data-id="<?= $tour['id'] ?>" 
+                 data-destination="<?= htmlspecialchars($tour['destination']) ?>" 
+                 data-status="<?= htmlspecialchars($tour['status']) ?>" 
+                 data-price="<?= $tour['discount_price'] ?>">
+                <?php if ($tour['is_promo']): ?>
+                    <span class="promo-badge">Акция!</span>
+                <?php endif; ?>
+                <img 
+                    src="<?= htmlspecialchars($tour['image']) ?>" 
+                    alt="<?= htmlspecialchars($tour['title']) ?>" 
+                    class="tour-image"
+                    loading="lazy"
+                    onerror="this.src='/travel/images/placeholder.jpg'"
+                >
                 <div class="tour-info">
                     <h3 class="tour-title"><?= htmlspecialchars($tour['title']) ?></h3>
                     <div class="tour-destination">
@@ -1094,7 +1061,11 @@ $conn = new mysqli($servername, $username, $password, $dbname);
                     <div class="tour-status status-<?= htmlspecialchars($tour['status']) ?>">
                         <?= ($tour['status'] === 'active' ? 'Доступен' : ($tour['status'] === 'upcoming' ? 'Скоро' : 'Недоступен')) ?>
                     </div>
-                
+                    <?php if (!empty($tour['packages'])): ?>
+                        <div class="tour-packages">
+                            <strong>Пакеты:</strong> <?= implode(', ', array_map('htmlspecialchars', array_column($tour['packages'], 'name'))) ?>
+                        </div>
+                    <?php endif; ?>
                 </div>
             </div>
         <?php endforeach; ?>
@@ -1109,7 +1080,7 @@ $conn = new mysqli($servername, $username, $password, $dbname);
                 <button class="gallery-next" onclick="moveGallery(1)">❯</button>
                 <div class="gallery-indicators" id="galleryIndicators"></div>
             </div>
-            
+
             <div class="modal-header">
                 <h2 id="modalTitle" class="modal-title"></h2>
                 <div id="modalDestination" class="modal-destination">
@@ -1117,12 +1088,12 @@ $conn = new mysqli($servername, $username, $password, $dbname);
                     <span id="destinationText"></span>
                     <div class="tour-transport" id="transportInfo"></div>
                 </div>
-                
+
                 <div id="modalDates" class="modal-dates">
                     <i class="fas fa-calendar-alt"></i>
                     <span id="datesText"></span>
                 </div>
-                
+
                 <div id="promoTimer" class="promo-timer" style="display: none;">
                     <i class="fas fa-clock"></i>
                     <span>Акция заканчивается через: </span>
@@ -1136,7 +1107,7 @@ $conn = new mysqli($servername, $username, $password, $dbname);
                 <h3>Выберите пакет услуг:</h3>
                 <div id="tourPackages" class="package-cards-container"></div>
             </div>
-            
+
             <div class="modal-footer">
                 <div>
                     <div id="modalPrice" class="modal-price"></div>
@@ -1176,24 +1147,9 @@ $conn = new mysqli($servername, $username, $password, $dbname);
 
 <script>
     const transportMap = {
-        'train': { 
-            icon: 'train', 
-            label: 'Поезд',
-            class: 'transport-icon-train',
-            color: '#10b981'
-        },
-        'airplane': { 
-            icon: 'plane', 
-            label: 'Самолет',
-            class: 'transport-icon-airplane',
-            color: '#3b82f6'
-        },
-        'bus': { 
-            icon: 'bus-alt',
-            label: 'Автобус',
-            class: 'transport-icon-bus',
-            color: '#f59e0b'
-        }
+        'train': { icon: 'train', label: 'Поезд', class: 'transport-icon-train', color: '#10b981' },
+        'airplane': { icon: 'plane', label: 'Самолет', class: 'transport-icon-airplane', color: '#3b82f6' },
+        'bus': { icon: 'bus-alt', label: 'Автобус', class: 'transport-icon-bus', color: '#f59e0b' }
     };
 
     const toursData = <?= json_encode($tours, JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;
@@ -1449,7 +1405,7 @@ $conn = new mysqli($servername, $username, $password, $dbname);
                     <input type="radio" name="package" id="package-${pkg.id}" value="${pkg.id}" ${index === 0 ? 'checked' : ''}>
                     <label for="package-${pkg.id}">
                         <div class="package-title">${escapeHtml(pkg.name || 'Без названия')}</div>
-                        ${pkg.price ? `<div class="package-price">${pkg.price}${pkg.price === 'Входит в стоимость тура' ? '' : ' рублей'}</div>` : ''}
+                        ${pkg.price ? `<div class="package-price">${Number(pkg.price).toLocaleString('ru-RU')} рублей</div>` : ''}
                         ${pkg.description ? `<div class="package-description">${escapeHtml(pkg.description)}</div>` : ''}
                         ${pkg.services && pkg.services.length > 0 ? `
                             <div class="package-services">
@@ -1566,52 +1522,61 @@ $conn = new mysqli($servername, $username, $password, $dbname);
         };
     }
 
-    function bookTour(tourId, name, phone, email, packageId, packageName, persons) {
-        const tour = toursData.find(t => t.id == tourId);
-        if (!tour) {
-            alert('Тур не найден!');
-            return;
-        }
-        const payload = {
-            travel_id: tourId,
-            name: name,
-            phone: phone,
-            email: email,
-            package_id: packageId,
-            persons: persons,
-            price: tour.discount_price || tour.price || 0
-        };
-
-        fetch('/travel/book_tour.php', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json'
-            },
-            body: JSON.stringify(payload)
-        })
-        .then(response => {
-            if (!response.ok) {
-                return response.text().then(text => {
-                    throw new Error(`HTTP error! Status: ${response.status}, Response: ${text}`);
-                });
-            }
-            return response.json();
-        })
-        .then(data => {
-            if (data.success) {
-                bookingForm.classList.remove('show');
-                successMessage.classList.add('show');
-                successText.textContent = `Тур успешно забронирован для ${persons} человек по цене ${Number(tour.discount_price || tour.price || 0).toLocaleString('ru-RU')} руб.! Мы свяжемся с вами для подтверждения.`;
-                modalButton.style.display = 'none';
-            } else {
-                alert(data.message || 'Ошибка бронирования. Попробуйте снова.');
-            }
-        })
-        .catch(error => {
-            alert('Произошла ошибка при бронировании: ' + error.message);
-        });
+   function bookTour(tourId, name, phone, email, packageId, packageName, persons) {
+    const tour = toursData.find(t => t.id == tourId);
+    if (!tour) {
+        alert('Тур не найден!');
+        return;
     }
+
+    // Добавляем user_id из сессии, если он доступен
+    const userId = <?php echo isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 'null'; ?>;
+    if (!userId) {
+        alert('Пользователь не авторизован. Пожалуйста, войдите в систему.');
+        return;
+    }
+
+    const payload = {
+        travel_id: tourId,
+        name: name,
+        phone: phone,
+        email: email,
+        package_id: packageId,
+        user_id: userId,  // Добавляем user_id в payload
+        persons: persons,
+        price: tour.discount_price || tour.price || 0
+    };
+
+    fetch('/travel/book_tour.php', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+        },
+        body: JSON.stringify(payload)
+    })
+    .then(response => {
+        if (!response.ok) {
+            return response.text().then(text => {
+                throw new Error(`HTTP error! Status: ${response.status}, Response: ${text}`);
+            });
+        }
+        return response.json();
+    })
+    .then(data => {
+        if (data.success) {
+            bookingForm.classList.remove('show');
+            successMessage.classList.add('show');
+            successText.textContent = `Тур успешно забронирован для ${persons} человек по цене ${Number(tour.discount_price || tour.price || 0).toLocaleString('ru-RU')} руб.! Мы свяжемся с вами для подтверждения.`;
+            modalButton.style.display = 'none';
+        } else {
+            alert(data.message || 'Ошибка бронирования. Попробуйте снова.');
+        }
+    })
+    .catch(error => {
+        alert('Произошла ошибка при бронировании: ' + error.message);
+    });
+}
 
     function formatDescription(description) {
         if (!description.trim()) {
@@ -1708,36 +1673,40 @@ $conn = new mysqli($servername, $username, $password, $dbname);
             const rect = icon.getBoundingClientRect();
             const x = e.clientX - rect.left;
             const y = e.clientY - rect.top;
-            
+
             icon.style.setProperty('--mouse-x', `${x}px`);
             icon.style.setProperty('--mouse-y', `${y}px`);
         });
     });
+
     document.addEventListener('DOMContentLoaded', function() {
-    const navbar = document.querySelector('.nav-links');
-    if (navbar) {
-        console.log('Navbar найден в DOM:', navbar);
-        navbar.addEventListener('click', function(e) {
-            console.log('Клик по navbar:', e.target);
-            if (e.target.tagName === 'A') {
-                console.log('Переход по ссылке:', e.target.href);
+        const navbar = document.querySelector('.nav-links');
+        if (navbar) {
+            console.log('Navbar найден в DOM:', navbar);
+            navbar.addEventListener('click', function(e) {
+                console.log('Клик по navbar:', e.target);
+                if (e.target.tagName === 'A') {
+                    console.log('Переход по ссылке:', e.target.href);
+                }
+            });
+        } else {
+            console.error('Navbar не найден в DOM');
+            const navs = document.querySelectorAll('nav');
+            console.log('Все nav-элементы:', navs);
+            navs.forEach((nav, index) => {
+                console.log(`Nav ${index}:`, nav.className, nav.outerHTML);
+            });
+            const hiddenNav = document.querySelector('.nav-links[style*="display: none"]');
+            if (hiddenNav) {
+                console.log('Nav-links скрыт из-за стилей:', hiddenNav);
             }
-        });
-    } else {
-        console.error('Navbar не найден в DOM');
-        // Проверяем все nav-элементы
-        const navs = document.querySelectorAll('nav');
-        console.log('Все nav-элементы:', navs);
-        navs.forEach((nav, index) => {
-            console.log(`Nav ${index}:`, nav.className, nav.outerHTML);
-        });
-        // Проверяем, скрыт ли .nav-links из-за медиа-запроса
-        const hiddenNav = document.querySelector('.nav-links[style*="display: none"]');
-        if (hiddenNav) {
-            console.log('Nav-links скрыт из-за стилей:', hiddenNav);
         }
-    }
-});
+    });
 </script>
 </body>
 </html>
+
+
+
+
+ 
