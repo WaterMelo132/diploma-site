@@ -113,56 +113,55 @@ try {
 
     $stmt->close();
 
-    // Обработка бронирований
     $bookings = [];
-    foreach ($bookings_raw as $booking) {
-        $travel_id = $booking['travel_id'];
-        if ($travel_id && !isset($bookings[$travel_id])) {
-            $bookings[$travel_id] = [
-                'title' => $booking['title'] ?? 'Без названия',
-                'destination' => $booking['destination'] ?? 'Не указано',
-                'start_date' => $booking['start_date'] ?? date('Y-m-d'),
-                'end_date' => $booking['end_date'] ?? date('Y-m-d'),
-                'tour_status' => $booking['tour_status'] ?? 'inactive',
-                'image_url' => $booking['image_url'] ?? "https://via.placeholder.com/100",
-                'tour_price' => floatval($booking['tour_price'] ?? 0), // Цена тура
-                'reservations' => [],
-                'total_tour_price' => 0
-            ];
-        }
-        if ($travel_id) {
-            $package_id = $booking['package_id'] ?? null;
-            $package_price = floatval($booking['package_price'] ?? 0);
-            $tour_price = floatval($booking['tour_price'] ?? 0);
-            $persons = intval($booking['persons'] ?? 1);
-            $tb_price = floatval($booking['price'] ?? 0);
-
-            // Расчет общей стоимости бронирования: цена пакета (или tb.price) + цена тура * количество человек
-            if ($package_id && $package_price > 0) {
-                $total_price = ($package_price + $tour_price) * $persons;
-                $price_source = "package_price + tour_price * persons";
-            } else {
-                $total_price = ($tb_price + $tour_price) * $persons;
-                $price_source = "tb_price + tour_price * persons";
-            }
-
-            if ($total_price < 0) {
-                $total_price = 0;
-                error_log("Warning: Negative total_price for booking ID {$booking['id']}");
-            }
-            if ($persons <= 0) {
-                error_log("Warning: Invalid persons count ($persons) for booking ID {$booking['id']}");
-                $persons = 1;
-            }
-
-            error_log("Booking ID {$booking['id']}: package_id=$package_id, package_price=$package_price, tour_price=$tour_price, persons=$persons, tb_price=$tb_price, total_price=$total_price, source=$price_source");
-
-            $booking['total_price'] = $total_price;
-            $booking['booking_status'] = $booking['booking_status'] ?? 'pending';
-            $bookings[$travel_id]['reservations'][] = $booking;
-            $bookings[$travel_id]['total_tour_price'] += $total_price;
-        }
+foreach ($bookings_raw as $booking) {
+    $travel_id = $booking['travel_id'];
+    if ($travel_id && !isset($bookings[$travel_id])) {
+        $bookings[$travel_id] = [
+            'title' => $booking['title'] ?? 'Без названия',
+            'destination' => $booking['destination'] ?? 'Не указано',
+            'start_date' => $booking['start_date'] ?? date('Y-m-d'),
+            'end_date' => $booking['end_date'] ?? date('Y-m-d'),
+            'tour_status' => $booking['tour_status'] ?? 'inactive',
+            'image_url' => $booking['image_url'] ?? "https://via.placeholder.com/100",
+            'tour_price' => floatval($booking['tour_price'] ?? 0),
+            'reservations' => [],
+            'total_tour_price' => 0
+        ];
     }
+    if ($travel_id) {
+        $package_id = $booking['package_id'] ?? null;
+        $package_price = floatval($booking['package_price'] ?? 0);
+        $tour_price = floatval($booking['tour_price'] ?? 0);
+        $persons = intval($booking['persons'] ?? 1);
+        $tb_price = floatval($booking['price'] ?? 0);
+
+        // Новая логика расчета
+        if ($package_id && $package_price > 0) {
+            $total_price = $package_price * $persons + $tour_price; // Пакет на человека + фиксированная цена тура
+            $price_source = "package_price * persons + tour_price";
+        } else {
+            $total_price = $tb_price * $persons + $tour_price; // Цена брони на человека + фиксированная цена тура
+            $price_source = "tb_price * persons + tour_price";
+        }
+
+        if ($total_price < 0) {
+            $total_price = 0;
+            error_log("Warning: Negative total_price for booking ID {$booking['id']}");
+        }
+        if ($persons <= 0) {
+            error_log("Warning: Invalid persons count ($persons) for booking ID {$booking['id']}");
+            $persons = 1;
+        }
+
+        error_log("Booking ID {$booking['id']}: package_id=$package_id, package_price=$package_price, tour_price=$tour_price, persons=$persons, tb_price=$tb_price, total_price=$total_price, source=$price_source");
+
+        $booking['total_price'] = $total_price;
+        $booking['booking_status'] = $booking['booking_status'] ?? 'pending';
+        $bookings[$travel_id]['reservations'][] = $booking;
+        $bookings[$travel_id]['total_tour_price'] += $total_price;
+    }
+}
 
     error_log("Bookings final count: " . count($bookings));
 } catch (Exception $e) {

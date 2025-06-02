@@ -144,32 +144,73 @@ try {
         }
     }
 
-    // Обработка редактирования бронирования
-    if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_booking'])) {
-        $booking_id = (int)($_POST['booking_id'] ?? 0);
-        $status = trim($_POST['status'] ?? '');
-        $persons = (int)($_POST['persons'] ?? 0);
-        $package_id = (int)($_POST['package_id'] ?? 0);
+   if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_booking'])) {
+    $booking_id = (int)($_POST['booking_id'] ?? 0);
+    $status = trim($_POST['status'] ?? '');
+    $persons = (int)($_POST['persons'] ?? 0);
+    $package_id = (int)($_POST['package_id'] ?? 0);
 
-        if (empty($status) || $persons <= 0 || $package_id <= 0) {
-            $error = 'Все поля обязательны, и количество человек должно быть больше 0.';
-        } elseif (!in_array($status, ['pending', 'confirmed', 'cancelled'])) {
-            $error = 'Неверный статус бронирования.';
-        } else {
-            $stmt = $conn->prepare("SELECT id FROM packages WHERE id = ?");
+    if (empty($status) || $persons <= 0 || $package_id <= 0) {
+        $error = 'Все поля обязательны, и количество человек должно быть больше 0.';
+    } elseif (!in_array($status, ['pending', 'confirmed', 'cancelled'])) {
+        $error = 'Неверный статус бронирования.';
+    } else {
+        try {
+            // Get package price
+            $stmt = $conn->prepare("SELECT price FROM packages WHERE id = ?");
             $stmt->bind_param('i', $package_id);
             $stmt->execute();
-            if (!$stmt->get_result()->fetch_assoc()) {
+            $package_result = $stmt->get_result()->fetch_assoc();
+            $stmt->close();
+
+            if (!$package_result) {
                 $error = 'Выбранный пакет не существует.';
             } else {
-                $stmt = $conn->prepare("UPDATE tour_bookings SET status = ?, persons = ?, package_id = ? WHERE id = ?");
-                $stmt->bind_param('siii', $status, $persons, $package_id, $booking_id);
+                $package_price = is_numeric($package_result['price']) ? floatval($package_result['price']) : 0;
+
+                // Get travel_id
+                $stmt = $conn->prepare("SELECT travel_id FROM tour_bookings WHERE id = ?");
+                $stmt->bind_param('i', $booking_id);
                 $stmt->execute();
-                $success = 'Бронирование успешно обновлено.';
+                $booking_result = $stmt->get_result()->fetch_assoc();
+                $stmt->close();
+
+                if (!$booking_result) {
+                    $error = 'Бронирование не найдено.';
+                } else {
+                    $travel_id = (int)$booking_result['travel_id'];
+
+                    // Get tour price
+                    $stmt = $conn->prepare("SELECT price AS tour_price FROM travels WHERE id = ?");
+                    $stmt->bind_param('i', $travel_id);
+                    $stmt->execute();
+                    $travel_result = $stmt->get_result()->fetch_assoc();
+                    $stmt->close();
+
+                    // Handle non-numeric tour_price
+                    $tour_price = preg_match('/^[0-9]+\\.?[0-9]*$/', $travel_result['tour_price'] ?? '') 
+                        ? floatval($travel_result['tour_price']) 
+                        : 0;
+
+                    // Calculate price with both package_price and tour_price multiplied by persons
+                    $price = ($package_price * $persons) + ($tour_price * $persons);
+
+                    // Update booking
+                    $stmt = $conn->prepare("UPDATE tour_bookings SET status = ?, persons = ?, package_id = ?, price = ? WHERE id = ?");
+                    $stmt->bind_param('siidi', $status, $persons, $package_id, $price, $booking_id);
+                    $stmt->execute();
+                    $stmt->close();
+
+                    error_log("Booking ID $booking_id updated: status=$status, persons=$persons, package_id=$package_id, package_price=$package_price, tour_price=$tour_price, price=$price");
+                    $success = 'Бронирование успешно обновлено.';
+                }
             }
-            $stmt->close();
+        } catch (mysqli_sql_exception $e) {
+            error_log("Ошибка при обновлении бронирования: " . $e->getMessage());
+            $error = 'Ошибка при обновлении бронирования.';
         }
     }
+}
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_SERVER['CONTENT_TYPE']) && strpos($_SERVER['CONTENT_TYPE'], 'application/json') !== false) {
     $data = json_decode(file_get_contents('php://input'), true);
     if (isset($data['action']) && $data['action'] === 'save_package') {
