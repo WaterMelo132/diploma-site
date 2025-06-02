@@ -130,33 +130,22 @@ foreach ($bookings_raw as $booking) {
         ];
     }
     if ($travel_id) {
-        $package_id = $booking['package_id'] ?? null;
-        $package_price = floatval($booking['package_price'] ?? 0);
-        $tour_price = floatval($booking['tour_price'] ?? 0);
+        // Используем напрямую tour_bookings.price
+        $total_price = floatval($booking['price'] ?? 0);
         $persons = intval($booking['persons'] ?? 1);
-        $tb_price = floatval($booking['price'] ?? 0);
-
-        // Новая логика расчета
-        if ($package_id && $package_price > 0) {
-            $total_price = $package_price * $persons + $tour_price; // Пакет на человека + фиксированная цена тура
-            $price_source = "package_price * persons + tour_price";
-        } else {
-            $total_price = $tb_price * $persons + $tour_price; // Цена брони на человека + фиксированная цена тура
-            $price_source = "tb_price * persons + tour_price";
-        }
 
         if ($total_price < 0) {
             $total_price = 0;
-            error_log("Warning: Negative total_price for booking ID {$booking['id']}");
+            error_log("Warning: Negative price for booking ID {$booking['id']}");
         }
         if ($persons <= 0) {
             error_log("Warning: Invalid persons count ($persons) for booking ID {$booking['id']}");
             $persons = 1;
         }
 
-        error_log("Booking ID {$booking['id']}: package_id=$package_id, package_price=$package_price, tour_price=$tour_price, persons=$persons, tb_price=$tb_price, total_price=$total_price, source=$price_source");
+        error_log("Booking ID {$booking['id']}: persons=$persons, price=$total_price");
 
-        $booking['total_price'] = $total_price;
+        $booking['total_price'] = $total_price; // Сохраняем price как total_price для совместимости
         $booking['booking_status'] = $booking['booking_status'] ?? 'pending';
         $bookings[$travel_id]['reservations'][] = $booking;
         $bookings[$travel_id]['total_tour_price'] += $total_price;
@@ -1619,7 +1608,7 @@ $stmt->close();
                                         <span><?= date('d.m.Y', strtotime($tour['start_date'])) ?></span> - 
                                         <span><?= date('d.m.Y', strtotime($tour['end_date'])) ?></span>
                                     </div>
-                                    <p><i class="fas fa-money"></i> Общая стоимость: <?= number_format($tour['total_tour_price'], 2, ',', ' ') ?> ₽</p>
+                                   <p><i class="fas fa-money"></i> Общая стоимость: <?= number_format($tour['total_tour_price'], 2, ',', ' ') ?> ₽</p>
                                 </div>
                                 <span class="booking-status status-<?= strtolower($reservation['booking_status'] ?? 'pending') ?>">
     <?= $reservation['booking_status'] === 'pending' ? 'В обработке' : 
