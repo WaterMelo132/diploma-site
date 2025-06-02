@@ -1547,7 +1547,7 @@ try {
         price: tour.discount_price || tour.price || 0
     };
 
-    fetch('/travel/book_tour.php', {
+    fetch('/book_tour.php', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
