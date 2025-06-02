@@ -1,11 +1,9 @@
-
-
-
 <?php
+// Никаких пробелов или строк перед этим тегом
 header('Permissions-Policy: interest-cohort=()');
 session_start();
-$show_success = false; // Initialize variable
-require_once('navbar.php'); // Подключает config.php, где есть $conn
+$show_success = false;
+require_once('navbar.php'); // Убедитесь, что navbar.php не содержит вывода
 
 // Проверяем соединение
 if (!isset($conn) || $conn->connect_error) {

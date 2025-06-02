@@ -1089,11 +1089,14 @@ $stmt->close();
             padding: 15px;
             border-radius: 10px;
             box-shadow: var(--shadow);
-            transition: transform 0.3s ease;
+
+            cursor: pointer;
+    transition: background 0.3s ease, transform 0.3s ease;
         }
 
         .ticket-item:hover {
-            transform: translateY(-5px);
+            background: #E6F0FA;
+    transform: translateY(-5px);
         }
 
         .ticket-item h4 {
