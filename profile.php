@@ -1,5 +1,4 @@
 <?php
-
 session_start();
 
 if (!isset($_SESSION['user_id']) || empty($_SESSION['user_id'])) {
@@ -7,11 +6,11 @@ if (!isset($_SESSION['user_id']) || empty($_SESSION['user_id'])) {
     exit;
 }
 
-// Проверка отмены бронирования должна быть до вывода
+// Проверка отмены бронирования
 if (isset($_GET['cancel']) && isset($_GET['booking_id'])) {
     $user_id = (int)$_SESSION['user_id'];
     $booking_id = (int)$_GET['booking_id'];
-    require_once('config.php'); // Подключаем конфигурацию для $conn
+    require_once('config.php');
     $stmt = $conn->prepare("DELETE FROM tour_bookings WHERE id = ? AND user_id = ?");
     $stmt->bind_param('ii', $booking_id, $user_id);
     $stmt->execute();
@@ -20,11 +19,11 @@ if (isset($_GET['cancel']) && isset($_GET['booking_id'])) {
     exit;
 }
 
-require_once('navbar.php'); // Подключаем после проверки отмены
+require_once('navbar.php');
 
 $user_id = (int)$_SESSION['user_id'];
 
-// Handle settings form submission
+// Обработка формы настроек
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_settings'])) {
     $new_username = trim($_POST['username']);
     $new_email = trim($_POST['email']);
@@ -69,16 +68,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_settings'])) {
     }
 }
 
-if (isset($_GET['cancel']) && isset($_GET['booking_id'])) {
-    $booking_id = (int)$_GET['booking_id'];
-    $stmt = $conn->prepare("DELETE FROM tour_bookings WHERE id = ? AND user_id = ?");
-    $stmt->bind_param('ii', $booking_id, $user_id);
-    $stmt->execute();
-    $stmt->close();
-    header('Location: profile.php');
-    exit;
-}
-
 $status_filter = $_GET['status'] ?? '';
 $sort_by = $_GET['sort'] ?? 'created_at';
 $sort_order = ($_GET['order'] ?? 'desc') === 'asc' ? 'ASC' : 'DESC';
@@ -87,18 +76,21 @@ $valid_sort_columns = ['created_at', 'start_date', 'price'];
 $sort_by = in_array($sort_by, $valid_sort_columns) ? $sort_by : 'created_at';
 
 try {
+    // Обновленный SQL-запрос: добавляем t.price для получения цены тура
     $query = "
-    SELECT tb.*, tb.status AS booking_status, t.title, t.destination, t.start_date, t.end_date, t.status AS tour_status, t.image AS image_url, 
-           p.name AS package_name, p.price AS package_price
-    FROM tour_bookings tb
-    LEFT JOIN travels t ON tb.travel_id = t.id
-    LEFT JOIN packages p ON tb.package_id = p.id
-    WHERE tb.user_id = ?
-";
-if ($status_filter) {
-    $query .= " AND t.status = ?";
-}
-$query .= " ORDER BY " . ($sort_by === 'created_at' ? "tb.$sort_by" : ($sort_by === 'price' ? "COALESCE(p.price * tb.persons, tb.price * tb.persons)" : "t.$sort_by")) . " $sort_order";
+        SELECT tb.*, tb.status AS booking_status, t.title, t.destination, t.start_date, t.end_date, t.status AS tour_status, 
+               t.image AS image_url, t.price AS tour_price, p.name AS package_name, p.price AS package_price
+        FROM tour_bookings tb
+        LEFT JOIN travels t ON tb.travel_id = t.id
+        LEFT JOIN packages p ON tb.package_id = p.id
+        WHERE tb.user_id = ?
+    ";
+    if ($status_filter) {
+        $query .= " AND t.status = ?";
+    }
+    // Обновляем сортировку для учета tour_price и package_price
+    $query .= " ORDER BY " . ($sort_by === 'created_at' ? "tb.$sort_by" : 
+                            ($sort_by === 'price' ? "COALESCE(p.price * tb.persons + t.price, tb.price * tb.persons + t.price)" : "t.$sort_by")) . " $sort_order";
 
     error_log("SQL Query: $query, user_id: $user_id, status_filter: $status_filter");
 
@@ -121,66 +113,72 @@ $query .= " ORDER BY " . ($sort_by === 'created_at' ? "tb.$sort_by" : ($sort_by 
 
     $stmt->close();
 
-   $bookings = [];
-foreach ($bookings_raw as $booking) {
-    $travel_id = $booking['travel_id'];
-    if ($travel_id && !isset($bookings[$travel_id])) {
-        $bookings[$travel_id] = [
-            'title' => $booking['title'] ?? 'Без названия',
-            'destination' => $booking['destination'] ?? 'Не указано',
-            'start_date' => $booking['start_date'] ?? date('Y-m-d'),
-            'end_date' => $booking['end_date'] ?? date('Y-m-d'),
-            'tour_status' => $booking['tour_status'] ?? 'inactive', // Статус тура
-            'image_url' => $booking['image_url'] ?? "https://via.placeholder.com/100",
-            'reservations' => [],
-            'total_tour_price' => 0
-        ];
+    // Обработка бронирований
+    $bookings = [];
+    foreach ($bookings_raw as $booking) {
+        $travel_id = $booking['travel_id'];
+        if ($travel_id && !isset($bookings[$travel_id])) {
+            $bookings[$travel_id] = [
+                'title' => $booking['title'] ?? 'Без названия',
+                'destination' => $booking['destination'] ?? 'Не указано',
+                'start_date' => $booking['start_date'] ?? date('Y-m-d'),
+                'end_date' => $booking['end_date'] ?? date('Y-m-d'),
+                'tour_status' => $booking['tour_status'] ?? 'inactive',
+                'image_url' => $booking['image_url'] ?? "https://via.placeholder.com/100",
+                'tour_price' => floatval($booking['tour_price'] ?? 0), // Цена тура
+                'reservations' => [],
+                'total_tour_price' => 0
+            ];
+        }
+        if ($travel_id) {
+            $package_id = $booking['package_id'] ?? null;
+            $package_price = floatval($booking['package_price'] ?? 0);
+            $tour_price = floatval($booking['tour_price'] ?? 0);
+            $persons = intval($booking['persons'] ?? 1);
+            $tb_price = floatval($booking['price'] ?? 0);
+
+            // Расчет общей стоимости бронирования: цена пакета (или tb.price) + цена тура * количество человек
+            if ($package_id && $package_price > 0) {
+                $total_price = ($package_price + $tour_price) * $persons;
+                $price_source = "package_price + tour_price * persons";
+            } else {
+                $total_price = ($tb_price + $tour_price) * $persons;
+                $price_source = "tb_price + tour_price * persons";
+            }
+
+            if ($total_price < 0) {
+                $total_price = 0;
+                error_log("Warning: Negative total_price for booking ID {$booking['id']}");
+            }
+            if ($persons <= 0) {
+                error_log("Warning: Invalid persons count ($persons) for booking ID {$booking['id']}");
+                $persons = 1;
+            }
+
+            error_log("Booking ID {$booking['id']}: package_id=$package_id, package_price=$package_price, tour_price=$tour_price, persons=$persons, tb_price=$tb_price, total_price=$total_price, source=$price_source");
+
+            $booking['total_price'] = $total_price;
+            $booking['booking_status'] = $booking['booking_status'] ?? 'pending';
+            $bookings[$travel_id]['reservations'][] = $booking;
+            $bookings[$travel_id]['total_tour_price'] += $total_price;
+        }
     }
-    if ($travel_id) {
-        $package_id = $booking['package_id'] ?? null;
-        $package_price = floatval($booking['package_price'] ?? 0);
-        $persons = intval($booking['persons'] ?? 1);
-        $tb_price = floatval($booking['price'] ?? 0);
-
-        if ($package_id && $package_price > 0) {
-            $total_price = $package_price * $persons;
-            $price_source = "package.price * persons";
-        } else {
-            $total_price = $tb_price * $persons;
-            $price_source = "tb.price * persons";
-        }
-        if ($total_price < 0) {
-            $total_price = 0;
-            error_log("Warning: Negative total_price for booking ID {$booking['id']}");
-        }
-        if ($persons <= 0) {
-            error_log("Warning: Invalid persons count ($persons) for booking ID {$booking['id']}");
-            $persons = 1;
-        }
-
-        error_log("Booking ID {$booking['id']}: package_id=$package_id, package_price=$package_price, persons=$persons, tb_price=$tb_price, total_price=$total_price, source=$price_source");
-
-        $booking['total_price'] = $total_price;
-        $booking['booking_status'] = $booking['booking_status'] ?? 'pending'; // Статус бронирования
-        $bookings[$travel_id]['reservations'][] = $booking;
-        $bookings[$travel_id]['total_tour_price'] += $total_price;
-    }
-}
 
     error_log("Bookings final count: " . count($bookings));
 } catch (Exception $e) {
     error_log("Error in query: " . $e->getMessage());
     $bookings = [];
 }
+
 // Получаем роль пользователя
-$user_id = (int)$_SESSION['user_id'];
 $stmt = $conn->prepare("SELECT role FROM users WHERE id = ?");
 $stmt->bind_param('i', $user_id);
 $stmt->execute();
-$user_role = $stmt->get_result()->fetch_assoc()['role'] ?? 'user'; // По умолчанию 'user', если роли нет
-$_SESSION['role'] = $user_role; // Сохраняем роль в сессии
+$user_role = $stmt->get_result()->fetch_assoc()['role'] ?? 'user';
+$_SESSION['role'] = $user_role;
 $stmt->close();
 
+// Получаем дату регистрации
 $stmt = $conn->prepare("SELECT MIN(created_at) AS registration_date FROM tour_bookings WHERE user_id = ?");
 $stmt->bind_param('i', $user_id);
 $stmt->execute();
@@ -189,6 +187,7 @@ $registration = $result->fetch_assoc();
 $registration_date = $registration['registration_date'] ? $registration['registration_date'] : date('Y-m-d');
 $stmt->close();
 
+// Получаем данные пользователя
 $stmt = $conn->prepare("SELECT username, email FROM users WHERE id = ?");
 $stmt->bind_param('i', $user_id);
 $stmt->execute();
@@ -197,6 +196,7 @@ $user['created_at'] = $registration_date;
 $_SESSION['registration_date'] = $registration_date;
 $stmt->close();
 
+// Получаем рекомендованные туры
 $stmt = $conn->prepare("SELECT id, title, destination, image AS image_url FROM travels WHERE status = 'active' ORDER BY RAND() LIMIT 3");
 $stmt->execute();
 $recommended_tours = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
@@ -213,16 +213,16 @@ $stmt->close();
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
     <style>
-        /* Ваш CSS код остается без изменений */
+        /* Ваш CSS остается без изменений */
         :root {
-            --primary:rgb(0, 102, 210);
+            --primary: rgb(0, 102, 210);
             --secondary: rgb(0, 221, 255);
             --white: #FFFFFF;
             --light-bg: #F7F9FC;
             --dark-text: #2D3748;
             --gray: #A0AEC0;
             --shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
-            --gradient: linear-gradient(135deg,rgb(97, 255, 247), #4A90E2);
+            --gradient: linear-gradient(135deg, rgb(97, 255, 247), #4A90E2);
         }
 
         * {
@@ -863,13 +863,13 @@ $stmt->close();
         }
 
         .ticket-side .qr-code {
-    width: 100px;
-    height: 100px;
-    background: var(--white);
-    padding: 5px;
-    border-radius: 5px;
-    transform: translateY(-20px); /* Поднимаем QR-код на 20px вверх */
-}
+            width: 100px;
+            height: 100px;
+            background: var(--white);
+            padding: 5px;
+            border-radius: 5px;
+            transform: translateY(-20px);
+        }
 
         .ticket-side .qr-code img {
             width: 100%;
@@ -915,125 +915,125 @@ $stmt->close();
         }
 
         .calendar-container {
-    padding: 20px;
-    background: var(--light-bg);
-    border-radius: 15px;
-    margin-bottom: 20px;
-    position: relative;
-}
+            padding: 20px;
+            background: var(--light-bg);
+            border-radius: 15px;
+            margin-bottom: 20px;
+            position: relative;
+        }
 
-.calendar-wrapper {
-    max-width: 100%;
-    overflow-x: auto;
-}
+        .calendar-wrapper {
+            max-width: 100%;
+            overflow-x: auto;
+        }
 
-.calendar-container .flatpickr-calendar {
-    background: var(--white);
-    box-shadow: var(--shadow);
-    border-radius: 15px;
-    width: 100%;
-    max-width: 900px; /* Увеличенный размер календаря */
-    margin: 0 auto;
-    font-family: 'Poppins', sans-serif;
-}
+        .calendar-container .flatpickr-calendar {
+            background: var(--white);
+            box-shadow: var(--shadow);
+            border-radius: 15px;
+            width: 100%;
+            max-width: 900px;
+            margin: 0 auto;
+            font-family: 'Poppins', sans-serif;
+        }
 
-.calendar-container .flatpickr-days {
-    width: 100%;
-}
+        .calendar-container .flatpickr-days {
+            width: 100%;
+        }
 
-.calendar-container .flatpickr-day {
-    height: 50px; /* Увеличенная высота дней */
-    line-height: 50px;
-    font-size: 16px;
-    transition: background 0.3s ease, color 0.3s ease;
-    border: 1px solid rgba(0, 0, 0, 0.1);
-}
+        .calendar-container .flatpickr-day {
+            height: 50px;
+            line-height: 50px;
+            font-size: 16px;
+            transition: background 0.3s ease, color 0.3s ease;
+            border: 1px solid rgba(0, 0, 0, 0.1);
+        }
 
-.calendar-container .flatpickr-day:hover {
-    background: var(--light-bg);
-    cursor: pointer;
-}
+        .calendar-container .flatpickr-day:hover {
+            background: var(--light-bg);
+            cursor: pointer;
+        }
 
-.calendar-container .flatpickr-day.selected {
-    background: var(--primary);
-    border-color: var(--primary);
-    color: var(--white);
-}
+        .calendar-container .flatpickr-day.selected {
+            background: var(--primary);
+            border-color: var(--primary);
+            color: var(--white);
+        }
 
-.calendar-container .flatpickr-day.today {
-    background: rgba(74, 144, 226, 0.2);
-    font-weight: 600;
-}
+        .calendar-container .flatpickr-day.today {
+            background: rgba(74, 144, 226, 0.2);
+            font-weight: 600;
+        }
 
-.calendar-container .flatpickr-day.hasEvent {
-    position: relative;
-}
+        .calendar-container .flatpickr-day.hasEvent {
+            position: relative;
+        }
 
-.calendar-container .flatpickr-day.hasEvent::after {
-    content: attr(data-event-count);
-    position: absolute;
-    top: 2px;
-    right: 2px;
-    width: 18px;
-    height: 18px;
-    background: var(--primary);
-    color: var(--white);
-    border-radius: 50%;
-    font-size: 10px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
+        .calendar-container .flatpickr-day.hasEvent::after {
+            content: attr(data-event-count);
+            position: absolute;
+            top: 2px;
+            right: 2px;
+            width: 18px;
+            height: 18px;
+            background: var(--primary);
+            color: var(--white);
+            border-radius: 50%;
+            font-size: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
 
-.calendar-container .flatpickr-day.pending::after {
-    background: #FBBF24; /* Желтый для "В обработке" */
-}
+        .calendar-container .flatpickr-day.pending::after {
+            background: #FBBF24;
+        }
 
-.calendar-container .flatpickr-day.confirmed::after {
-    background: #34D399; /* Зеленый для "Подтверждено" */
-}
+        .calendar-container .flatpickr-day.confirmed::after {
+            background: #34D399;
+        }
 
-.calendar-container .flatpickr-day.cancelled::after {
-    background: #EF4444; /* Красный для "Отменено" */
-}
+        .calendar-container .flatpickr-day.cancelled::after {
+            background: #EF4444;
+        }
 
-.calendar-events {
-    margin-top: 20px;
-    padding: 15px;
-    background: var(--white);
-    border-radius: 10px;
-    box-shadow: var(--shadow);
-    max-height: 300px;
-    overflow-y: auto;
-}
+        .calendar-events {
+            margin-top: 20px;
+            padding: 15px;
+            background: var(--white);
+            border-radius: 10px;
+            box-shadow: var(--shadow);
+            max-height: 300px;
+            overflow-y: auto;
+        }
 
-.calendar-events h4 {
-    margin-bottom: 15px;
-    font-size: 18px;
-    color: var(--dark-text);
-}
+        .calendar-events h4 {
+            margin-bottom: 15px;
+            font-size: 18px;
+            color: var(--dark-text);
+        }
 
-.calendar-events .event-item {
-    padding: 10px;
-    margin-bottom: 10px;
-    background: var(--light-bg);
-    border-radius: 8px;
-    transition: transform 0.3s ease;
-}
+        .calendar-events .event-item {
+            padding: 10px;
+            margin-bottom: 10px;
+            background: var(--light-bg);
+            border-radius: 8px;
+            transition: transform 0.3s ease;
+        }
 
-.calendar-events .event-item:hover {
-    transform: translateX(5px);
-}
+        .calendar-events .event-item:hover {
+            transform: translateX(5px);
+        }
 
-.calendar-events .event-item p {
-    font-size: 14px;
-    color: var(--gray);
-    margin: 5px 0;
-}
+        .calendar-events .event-item p {
+            font-size: 14px;
+            color: var(--gray);
+            margin: 5px 0;
+        }
 
-.calendar-events .event-item strong {
-    color: var(--dark-text);
-}
+        .calendar-events .event-item strong {
+            color: var(--dark-text);
+        }
 
         .settings-form {
             display: grid;
@@ -1095,14 +1095,13 @@ $stmt->close();
             padding: 15px;
             border-radius: 10px;
             box-shadow: var(--shadow);
-
             cursor: pointer;
-    transition: background 0.3s ease, transform 0.3s ease;
+            transition: background 0.3s ease, transform 0.3s ease;
         }
 
         .ticket-item:hover {
             background: #E6F0FA;
-    transform: translateY(-5px);
+            transform: translateY(-5px);
         }
 
         .ticket-item h4 {
@@ -1156,14 +1155,15 @@ $stmt->close();
                 margin-top: 0;
             }
 
-           .ticket-side .qr-code {
-    width: 100px;
-    height: 100px;
-    background: var(--white);
-    padding: 5px;
-    border-radius: 5px;
-    margin-top: -20px; /* Поднимаем QR-код на 20px вверх */
-}
+            .ticket-side .qr-code {
+                width: 100px;
+                height: 100px;
+                background: var(--white);
+                padding: 5px;
+                border-radius: 5px;
+                margin-top: -20px;
+            }
+
             .ticket-info {
                 grid-template-columns: 1fr;
             }
@@ -1182,182 +1182,182 @@ $stmt->close();
                 grid-template-columns: 1fr;
             }
         }
+
         .form-message.warning {
-    background: #FBBF24;
-    color: #fff;
-    padding: 10px;
-    border-radius: 8px;
-    font-size: 14px;
-    margin-bottom: 20px;
-}
-.welcome-banner {
-    background: var(--gradient);
-    color: var(--white);
-    padding: 30px;
-    border-radius: 15px;
-    text-align: center;
-    margin-bottom: 30px;
-    animation: gradientShift 5s infinite;
-}
+            background: #FBBF24;
+            color: #fff;
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 14px;
+            margin-bottom: 20px;
+        }
 
-@keyframes gradientShift {
-    0% { background: linear-gradient(135deg,rgb(0, 226, 247), #4A90E2); }
-    50% { background: linear-gradient(135deg, #4A90E2,rgb(0, 226, 247)); }
-    100% { background: linear-gradient(135deg, rgb(0, 226, 247), #4A90E2); }
-}
+        .welcome-banner {
+            background: var(--gradient);
+            color: var(--white);
+            padding: 30px;
+            border-radius: 15px;
+            text-align: center;
+            margin-bottom: 30px;
+            animation: gradientShift 5s infinite;
+        }
 
-.welcome-banner h1 {
-    font-size: 28px;
-    font-weight: 700;
-    margin-bottom: 10px;
-}
+        @keyframes gradientShift {
+            0% { background: linear-gradient(135deg, rgb(0, 226, 247), #4A90E2); }
+            50% { background: linear-gradient(135deg, #4A90E2, rgb(0, 226, 247)); }
+            100% { background: linear-gradient(135deg, rgb(0, 226, 247), #4A90E2); }
+        }
 
-.welcome-banner p {
-    font-size: 16px;
-    opacity: 0.9;
-}
+        .welcome-banner h1 {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 10px;
+        }
 
-.stats-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 20px;
-}
+        .welcome-banner p {
+            font-size: 16px;
+            opacity: 0.9;
+        }
 
-.stat-card {
-    background: var(--light-bg);
-    padding: 20px;
-    border-radius: 10px;
-    text-align: center;
-    transition: transform 0.3s ease, background 0.3s ease;
-}
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+        }
 
-.stat-card:hover {
-    transform: translateY(-5px);
-    background: var(--secondary);
-    color: var(--white);
-}
+        .stat-card {
+            background: var(--light-bg);
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            transition: transform 0.3s ease, background 0.3s ease;
+        }
 
-.stat-card i {
-    font-size: 30px;
-    color: var(--primary);
-    margin-bottom: 10px;
-}
+        .stat-card:hover {
+            transform: translateY(-5px);
+            background: var(--secondary);
+            color: var(--white);
+        }
 
-.stat-card h3 {
-    font-size: 14px;
-    margin-bottom: 10px;
-    color: inherit;
-}
+        .stat-card i {
+            font-size: 30px;
+            color: var(--primary);
+            margin-bottom: 10px;
+        }
 
-.stat-card p {
-    font-size: 24px;
-    font-weight: 700;
-    color: inherit;
-}
+        .stat-card h3 {
+            font-size: 14px;
+            margin-bottom: 10px;
+            color: inherit;
+        }
 
-.recommendations-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-    gap: 20px;
-}
+        .stat-card p {
+            font-size: 24px;
+            font-weight: 700;
+            color: inherit;
+        }
 
-.recommendation-card {
-    background: var(--white);
-    border-radius: 15px;
-    overflow: hidden;
-    box-shadow: var(--shadow);
-    transition: transform 0.3s ease;
-}
+        .recommendations-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+        }
 
-.recommendation-card:hover {
-    transform: translateY(-5px);
-}
+        .recommendation-card {
+            background: var(--white);
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: var(--shadow);
+            transition: transform 0.3s ease;
+        }
 
-.recommendation-card img {
-    width: 100%;
-    height: 150px;
-    object-fit: cover;
-}
+        .recommendation-card:hover {
+            transform: translateY(-5px);
+        }
 
-.recommendation-card h3 {
-    font-size: 16px;
-    font-weight: 600;
-    margin: 15px;
-}
+        .recommendation-card img {
+            width: 100%;
+            height: 150px;
+            object-fit: cover;
+        }
 
-.recommendation-card p {
-    font-size: 14px;
-    color: var(--gray);
-    margin: 0 15px 15px;
-}
+        .recommendation-card h3 {
+            font-size: 16px;
+            font-weight: 600;
+            margin: 15px;
+        }
 
-.recommendation-card .btn {
-    margin: 0 15px 15px;
-    width: calc(100% - 30px);
-    text-align: center;
-    justify-content: center;
-}
+        .recommendation-card p {
+            font-size: 14px;
+            color: var(--gray);
+            margin: 0 15px 15px;
+        }
 
-.actions-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 20px;
-}
+        .recommendation-card .btn {
+            margin: 0 15px 15px;
+            width: calc(100% - 30px);
+            text-align: center;
+            justify-content: center;
+        }
 
-.action-btn {
-    padding: 15px;
-    background: var(--primary);
-    color: var(--white);
-    border: none;
-    border-radius: 10px;
-    font-size: 16px;
-    font-weight: 600;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 10px;
-    transition: transform 0.3s ease, background 0.3s ease;
-}
+        .actions-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+        }
 
-.action-btn:hover {
-    transform: scale(1.05);
-    background: var(--secondary);
-}
+        .action-btn {
+            padding: 15px;
+            background: var(--primary);
+            color: var(--white);
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            transition: transform 0.3s ease, background 0.3s ease;
+        }
 
+        .action-btn:hover {
+            transform: scale(1.05);
+            background: var(--secondary);
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <!-- Sidebar -->
         <div class="sidebar">
-    <div class="profile-avatar">
-        <h1>Привет, <?= htmlspecialchars($user['username']) ?>!</h1>
-        <p><?= htmlspecialchars($user['email']) ?></p>
-       
-    </div>
-    
-    <nav class="menu">
-        <a onclick="showSection('glavn'); event.stopPropagation();" id="glavn-btn"><i class="fas fa-home"></i> Главная</a>
-        <a onclick="showSection('kalendar'); event.stopPropagation();" id="kalendar-btn"><i class="fas fa-calendar"></i> Календарь</a>
-        <a onclick="showSection('nastroiki'); event.stopPropagation();" id="nastro-btn"><i class="fas fa-cog"></i> Настройки</a>
-       
-        <a onclick="showSection('bilety'); event.stopPropagation();" id="bilety-btn"><i class="fas fa-ticket-alt"></i> Билеты</a>
-        <a onclick="showSection('bronirovaniya'); event.stopPropagation();" id="bronirovaniya-btn"><i class="fas fa-suitcase"></i> Бронирования</a>
-        <?php if ($_SESSION['role'] === 'admin'): ?>
-            <a href="admin.php" target="_blank"><i class="fas fa-shield-alt"></i> Админ-панель</a>
-        <?php endif; ?>
-        <a href="logout.php"><i class="fas fa-sign-out-alt"></i> Выйти</a>
-    </nav>
-</div>
+            <div class="profile-avatar">
+                <h1>Привет, <?= htmlspecialchars($user['username']) ?>!</h1>
+                <p><?= htmlspecialchars($user['email']) ?></p>
+            </div>
+            
+            <nav class="menu">
+                <a onclick="showSection('glavn'); event.stopPropagation();" id="glavn-btn"><i class="fas fa-home"></i> Главная</a>
+                <a onclick="showSection('kalendar'); event.stopPropagation();" id="kalendar-btn"><i class="fas fa-calendar"></i> Календарь</a>
+                <a onclick="showSection('nastroiki'); event.stopPropagation();" id="nastro-btn"><i class="fas fa-cog"></i> Настройки</a>
+                <a onclick="showSection('bilety'); event.stopPropagation();" id="bilety-btn"><i class="fas fa-ticket-alt"></i> Билеты</a>
+                <a onclick="showSection('bronirovaniya'); event.stopPropagation();" id="bronirovaniya-btn"><i class="fas fa-suitcase"></i> Бронирования</a>
+                <?php if ($_SESSION['role'] === 'admin'): ?>
+                    <a href="admin.php" target="_blank"><i class="fas fa-shield-alt"></i> Админ-панель</a>
+                <?php endif; ?>
+                <a href="logout.php"><i class="fas fa-sign-out-alt"></i> Выйти</a>
+            </nav>
+        </div>
 
+        <!-- Главная секция -->
         <div class="main-content active" id="glavn">
-    <div class="welcome-banner">
-        <h1>Добро пожаловать, <?= htmlspecialchars($user['username']) ?>!</h1>
-        <p>Сегодня <?= date('d.m.Y') ?>. Давайте спланируем ваше следующее путешествие!</p>
-    </div>
+            <div class="welcome-banner">
+                <h1>Добро пожаловать, <?= htmlspecialchars($user['username']) ?>!</h1>
+                <p>Сегодня <?= date('d.m.Y') ?>. Давайте спланируем ваше следующее путешествие!</p>
+            </div>
 
-    <div class="section">
+            <div class="section">
                 <h2 class="section-title"><i class="fas fa-user-circle"></i> Личная информация</h2>
                 <div class="user-details">
                     <div class="detail-item">
@@ -1367,7 +1367,6 @@ $stmt->close();
                             <p><?= htmlspecialchars($user['email']) ?></p>
                         </div>
                     </div>
-                    
                     <div class="detail-item">
                         <div class="detail-icon"><i class="fas fa-phone"></i></div>
                         <div class="detail-content">
@@ -1375,7 +1374,6 @@ $stmt->close();
                             <p>Не указан</p>
                         </div>
                     </div>
-                    
                     <div class="detail-item">
                         <div class="detail-icon"><i class="fas fa-calendar-alt"></i></div>
                         <div class="detail-content">
@@ -1386,96 +1384,98 @@ $stmt->close();
                 </div>
             </div>
 
-    <div class="section">
-        <h2 class="section-title"><i class="fas fa-chart-line"></i> Ваша статистика</h2>
-        <div class="stats-grid">
-            <div class="stat-card">
-                <i class="fas fa-suitcase"></i>
-                <h3>Всего бронирований</h3>
-                <p><?= count($bookings) ?></p>
-            </div>
-            <div class="stat-card">
-                <i class="fas fa-ticket-alt"></i>
-                <h3>Подтвержденные билеты</h3>
-                <p>
-                    <?php
-                    $confirmed_count = 0;
-                    foreach ($bookings as $tour) {
-                        foreach ($tour['reservations'] as $reservation) {
-                            if (($reservation['booking_status'] ?? 'pending') === 'confirmed') {
-                                $confirmed_count++;
+            <div class="section">
+                <h2 class="section-title"><i class="fas fa-chart-line"></i> Ваша статистика</h2>
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <i class="fas fa-suitcase"></i>
+                        <h3>Всего бронирований</h3>
+                        <p><?= count($bookings) ?></p>
+                    </div>
+                    <div class="stat-card">
+                        <i class="fas fa-ticket-alt"></i>
+                        <h3>Подтвержденные билеты</h3>
+                        <p>
+                            <?php
+                            $confirmed_count = 0;
+                            foreach ($bookings as $tour) {
+                                foreach ($tour['reservations'] as $reservation) {
+                                    if (($reservation['booking_status'] ?? 'pending') === 'confirmed') {
+                                        $confirmed_count++;
+                                    }
+                                }
                             }
-                        }
-                    }
-                    echo $confirmed_count;
-                    ?>
-                </p>
-            </div>
-            <div class="stat-card">
-                <i class="fas fa-hourglass-half"></i>
-                <h3>Ожидающие заявки</h3>
-                <p>
-                    <?php
-                    $pending_count = 0;
-                    foreach ($bookings as $tour) {
-                        foreach ($tour['reservations'] as $reservation) {
-                            if (($reservation['booking_status'] ?? 'pending') === 'pending') {
-                                $pending_count++;
+                            echo $confirmed_count;
+                            ?>
+                        </p>
+                    </div>
+                    <div class="stat-card">
+                        <i class="fas fa-hourglass-half"></i>
+                        <h3>Ожидающие заявки</h3>
+                        <p>
+                            <?php
+                            $pending_count = 0;
+                            foreach ($bookings as $tour) {
+                                foreach ($tour['reservations'] as $reservation) {
+                                    if (($reservation['booking_status'] ?? 'pending') === 'pending') {
+                                        $pending_count++;
+                                    }
+                                }
                             }
-                        }
-                    }
-                    echo $pending_count;
-                    ?>
-                </p>
+                            echo $pending_count;
+                            ?>
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2 class="section-title"><i class="fas fa-star"></i> Рекомендованные туры</h2>
+                <div class="recommendations-grid">
+                    <?php foreach ($recommended_tours as $tour): ?>
+                        <div class="recommendation-card">
+                            <img src="<?= htmlspecialchars($tour['image_url'] ?? 'https://via.placeholder.com/150') ?>" alt="<?= htmlspecialchars($tour['title']) ?>">
+                            <h3><?= htmlspecialchars($tour['title']) ?></h3>
+                            <p><?= htmlspecialchars($tour['destination']) ?></p>
+                            <a href="tours.php?id=<?= $tour['id'] ?>" class="btn btn-primary"><i class="fas fa-search"></i> Подробнее</a>
+                        </div>
+                    <?php endforeach; ?>
+                    <?php if (empty($recommended_tours)): ?>
+                        <p>Нет доступных туров для рекомендации.</p>
+                    <?php endif; ?>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2 class="section-title"><i class="fas fa-rocket"></i> Быстрые действия</h2>
+                <div class="actions-grid">
+                    <button class="action-btn" onclick="window.location.href='tours.php'">
+                        <i class="fas fa-search"></i> Найти тур
+                    </button>
+                    <button class="action-btn" onclick="showSection('bilety')">
+                        <i class="fas fa-ticket-alt"></i> Мои билеты
+                    </button>
+                    <button class="action-btn" onclick="showSection('bronirovaniya')">
+                        <i class="fas fa-suitcase"></i> Мои бронирования
+                    </button>
+                </div>
             </div>
         </div>
-    </div>
 
-    <div class="section">
-        <h2 class="section-title"><i class="fas fa-star"></i> Рекомендованные туры</h2>
-        <div class="recommendations-grid">
-    <?php foreach ($recommended_tours as $tour): ?>
-        <div class="recommendation-card">
-            <img src="<?= htmlspecialchars($tour['image_url'] ?? 'https://via.placeholder.com/150') ?>" alt="<?= htmlspecialchars($tour['title']) ?>">
-            <h3><?= htmlspecialchars($tour['title']) ?></h3>
-            <p><?= htmlspecialchars($tour['destination']) ?></p>
-            <a href="tours.php?id=<?= $tour['id'] ?>" class="btn btn-primary"><i class="fas fa-search"></i> Подробнее</a>
-        </div>
-    <?php endforeach; ?>
-    <?php if (empty($recommended_tours)): ?>
-        <p>Нет доступных туров для рекомендации.</p>
-    <?php endif; ?>
-</div>
-    </div>
-
-    <div class="section">
-        <h2 class="section-title"><i class="fas fa-rocket"></i> Быстрые действия</h2>
-        <div class="actions-grid">
-            <button class="action-btn" onclick="window.location.href='tours.php'">
-                <i class="fas fa-search"></i> Найти тур
-            </button>
-            <button class="action-btn" onclick="showSection('bilety')">
-                <i class="fas fa-ticket-alt"></i> Мои билеты
-            </button>
-            <button class="action-btn" onclick="showSection('bronirovaniya')">
-                <i class="fas fa-suitcase"></i> Мои бронирования
-            </button>
-        </div>
-    </div>
-</div>
-
+        <!-- Календарь -->
         <div class="main-content" id="kalendar">
-    <div class="section">
-        <h2 class="section-title"><i class="fas fa-calendar-alt"></i> Календарь бронирований</h2>
-        <div class="calendar-container">
-            <div class="calendar-wrapper">
-                <input id="calendar" type="text" readonly>
-                <div id="calendar-events" class="calendar-events"></div>
+            <div class="section">
+                <h2 class="section-title"><i class="fas fa-calendar-alt"></i> Календарь бронирований</h2>
+                <div class="calendar-container">
+                    <div class="calendar-wrapper">
+                        <input id="calendar" type="text" readonly>
+                        <div id="calendar-events" class="calendar-events"></div>
+                    </div>
+                </div>
             </div>
         </div>
-    </div>
-</div>
 
+        <!-- Настройки -->
         <div class="main-content" id="nastroiki">
             <div class="section">
                 <h2 class="section-title"><i class="fas fa-cog"></i> Настройки</h2>
@@ -1490,17 +1490,14 @@ $stmt->close();
                         <label for="username">Имя пользователя</label>
                         <input type="text" id="username" name="username" value="<?= htmlspecialchars($user['username']) ?>" required>
                     </div>
-                    
                     <div class="form-group">
                         <label for="email">Email</label>
                         <input type="email" id="email" name="email" value="<?= htmlspecialchars($user['email']) ?>" required>
                     </div>
-                    
                     <div class="form-group">
                         <label for="password">Новый пароль (оставьте пустым, чтобы не менять)</label>
                         <input type="password" id="password" name="password" placeholder="Введите новый пароль">
                     </div>
-                    
                     <button type="submit" name="update_settings" class="btn btn-primary">
                         <i class="fas fa-save"></i> Сохранить изменения
                     </button>
@@ -1508,83 +1505,77 @@ $stmt->close();
             </div>
         </div>
 
-        <div class="main-content" id="profil">
-            
-        </div>
-
-       <div class="main-content" id="bilety">
-    <div class="section">
-        <h2 class="section-title"><i class="fas fa-ticket-alt"></i> Мои билеты</h2>
-        <?php
-        // Подсчитываем неподтвержденные заявки
-        $pending_count = 0;
-        foreach ($bookings as $tour) {
-            foreach ($tour['reservations'] as $reservation) {
-                if (($reservation['booking_status'] ?? 'pending') === 'pending') {
-                    $pending_count++;
-                }
-            }
-        }
-        if ($pending_count > 0): ?>
-            <div class="form-message warning" style="background: #FBBF24; color: #fff; margin-bottom: 20px;">
-                У вас есть <?php echo $pending_count; ?> неподтвержденных заявок. Пожалуйста, дождитесь подтверждения для получения билетов.
-            </div>
-        <?php endif; ?>
-        <div class="ticket-list">
-            <?php
-            $confirmed_bookings = false;
-            foreach ($bookings as $travel_id => $tour):
-                foreach ($tour['reservations'] as $reservation):
-                    if (($reservation['booking_status'] ?? 'pending') !== 'confirmed') {
-                        continue; // Пропускаем неподтвержденные брони
+        <!-- Билеты -->
+        <div class="main-content" id="bilety">
+            <div class="section">
+                <h2 class="section-title"><i class="fas fa-ticket-alt"></i> Мои билеты</h2>
+                <?php
+                $pending_count = 0;
+                foreach ($bookings as $tour) {
+                    foreach ($tour['reservations'] as $reservation) {
+                        if (($reservation['booking_status'] ?? 'pending') === 'pending') {
+                            $pending_count++;
+                        }
                     }
-                    $confirmed_bookings = true;
-                    $bookingData = [
-                        'id' => $reservation['id'] ?? 0,
-                        'title' => htmlspecialchars($tour['title'] ?? 'Без названия', ENT_QUOTES, 'UTF-8'),
-                        'destination' => htmlspecialchars($tour['destination'] ?? 'Не указано', ENT_QUOTES, 'UTF-8'),
-                        'start_date' => $tour['start_date'] ?? date('Y-m-d'),
-                        'end_date' => $tour['end_date'] ?? date('Y-m-d'),
-                        'booking_status' => $reservation['booking_status'] ?? 'pending', // Используем booking_status
-                        'package_name' => htmlspecialchars($reservation['package_name'] ?? 'Без пакета', ENT_QUOTES, 'UTF-8'),
-                        'persons' => $reservation['persons'] ?? 1,
-                        'created_at' => $reservation['created_at'] ?? date('Y-m-d H:i:s'),
-                        'total_price' => $reservation['total_price'] ?? 0,
-                        'username' => htmlspecialchars($user['username'], ENT_QUOTES, 'UTF-8'),
-                        'image_url' => $tour['image_url'] ?? 'https://via.placeholder.com/100'
-                        
-                    ];
-                    ?>
-                    <div class="ticket-item">
-                        <div class="ticket-content" onclick='openTicket(<?= json_encode($bookingData, JSON_HEX_QUOT | JSON_HEX_APOS) ?>)'>
-                            <h4><?= htmlspecialchars($tour['title'] ?? 'Без названия') ?> (Билет #<?= $reservation['id'] ?>)</h4>
-                            <p><i class="fas fa-map-marker-alt"></i> <?= htmlspecialchars($tour['destination'] ?? 'Не указано') ?></p>
-                            <p><i class="far fa-calendar-alt"></i> <?= date('d.m.Y', strtotime($tour['start_date'])) ?> - <?= date('d.m.Y', strtotime($tour['end_date'])) ?></p>
-                            <p><i class="fas fa-ruble-sign"></i> <?= number_format($reservation['total_price'], 2, ',', ' ') ?> ₽</p>
-                        </div>
-                        <div class="ticket-actions">
-                            <?php if (($reservation['booking_status'] ?? 'pending') === 'confirmed'): ?>
-                                <a href="?cancel=1&booking_id=<?= $reservation['id'] ?>" class="btn btn-danger" onclick="return confirm('Вы точно уверены, что хотите отменить билет?');">
-                                    <i class="fas fa-times"></i> Отказаться
-                                </a>
-                               
-                            <?php endif; ?>
-                        </div>
+                }
+                if ($pending_count > 0): ?>
+                    <div class="form-message warning">
+                        У вас есть <?php echo $pending_count; ?> неподтвержденных заявок. Пожалуйста, дождитесь подтверждения для получения билетов.
                     </div>
-                <?php endforeach; ?>
-            <?php endforeach; ?>
-            <?php if (!$confirmed_bookings): ?>
-                <div class="no-bookings">
-                    <i class="fas fa-ticket-alt"></i>
-                    <h3>У вас пока нет подтвержденных билетов</h3>
-                    <p>Забронируйте тур и дождитесь подтверждения, чтобы получить билет!</p>
+                <?php endif; ?>
+                <div class="ticket-list">
+                    <?php
+                    $confirmed_bookings = false;
+                    foreach ($bookings as $travel_id => $tour):
+                        foreach ($tour['reservations'] as $reservation):
+                            if (($reservation['booking_status'] ?? 'pending') !== 'confirmed') {
+                                continue;
+                            }
+                            $confirmed_bookings = true;
+                            $bookingData = [
+                                'id' => $reservation['id'] ?? 0,
+                                'title' => htmlspecialchars($tour['title'] ?? 'Без названия', ENT_QUOTES, 'UTF-8'),
+                                'destination' => htmlspecialchars($tour['destination'] ?? 'Не указано', ENT_QUOTES, 'UTF-8'),
+                                'start_date' => $tour['start_date'] ?? date('Y-m-d'),
+                                'end_date' => $tour['end_date'] ?? date('Y-m-d'),
+                                'booking_status' => $reservation['booking_status'] ?? 'pending',
+                                'package_name' => htmlspecialchars($reservation['package_name'] ?? 'Без пакета', ENT_QUOTES, 'UTF-8'),
+                                'persons' => $reservation['persons'] ?? 1,
+                                'created_at' => $reservation['created_at'] ?? date('Y-m-d H:i:s'),
+                                'total_price' => $reservation['total_price'] ?? 0,
+                                'username' => htmlspecialchars($user['username'], ENT_QUOTES, 'UTF-8'),
+                                'image_url' => $tour['image_url'] ?? 'https://via.placeholder.com/100'
+                            ];
+                            ?>
+                            <div class="ticket-item">
+                                <div class="ticket-content" onclick='openTicket(<?= json_encode($bookingData, JSON_HEX_QUOT | JSON_HEX_APOS) ?>)'>
+                                    <h4><?= htmlspecialchars($tour['title'] ?? 'Без названия') ?> (Билет #<?= $reservation['id'] ?>)</h4>
+                                    <p><i class="fas fa-map-marker-alt"></i> <?= htmlspecialchars($tour['destination'] ?? 'Не указано') ?></p>
+                                    <p><i class="far fa-calendar-alt"></i> <?= date('d.m.Y', strtotime($tour['start_date'])) ?> - <?= date('d.m.Y', strtotime($tour['end_date'])) ?></p>
+                                    <p><i class="fas fa-ruble-sign"></i> <?= number_format($reservation['total_price'], 2, ',', ' ') ?> ₽</p>
+                                </div>
+                                <div class="ticket-actions">
+                                    <?php if (($reservation['booking_status'] ?? 'pending') === 'confirmed'): ?>
+                                        <a href="?cancel=1&booking_id=<?= $reservation['id'] ?>" class="btn btn-danger" onclick="return confirm('Вы точно уверены, что хотите отменить билет?');">
+                                            <i class="fas fa-times"></i> Отказаться
+                                        </a>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
+                    <?php endforeach; ?>
+                    <?php if (!$confirmed_bookings): ?>
+                        <div class="no-bookings">
+                            <i class="fas fa-ticket-alt"></i>
+                            <h3>У вас пока нет подтвержденных билетов</h3>
+                            <p>Забронируйте тур и дождитесь подтверждения, чтобы получить билет!</p>
+                        </div>
+                    <?php endif; ?>
                 </div>
-            <?php endif; ?>
+            </div>
         </div>
-    </div>
-</div>
-              
 
+        <!-- Бронирования -->
         <div class="main-content" id="bronirovaniya">
             <div class="section">
                 <h2 class="section-title"><i class="fas fa-suitcase"></i> Мои бронирования</h2>
@@ -1596,14 +1587,12 @@ $stmt->close();
                         <option value="upcoming" <?= $status_filter === 'upcoming' ? 'selected' : '' ?>>Ожидает</option>
                         <option value="inactive" <?= $status_filter === 'inactive' ? 'selected' : '' ?>>Отменено</option>
                     </select>
-                    
                     <span class="filter-label">Сортировка:</span>
                     <select class="select" onchange="window.location.href='?sort=' + this.value + '&order=<?= $sort_order ?>'">
                         <option value="created_at" <?= $sort_by === 'created_at' ? 'selected' : '' ?>>Дата бронирования</option>
                         <option value="start_date" <?= $sort_by === 'start_date' ? 'selected' : '' ?>>Дата начала</option>
                         <option value="price" <?= $sort_by === 'price' ? 'selected' : '' ?>>Стоимость</option>
                     </select>
-                    
                     <select class="select" onchange="window.location.href='?sort=<?= $sort_by ?>&order=' + this.value">
                         <option value="desc" <?= $sort_order === 'DESC' ? 'selected' : '' ?>>По убыванию</option>
                         <option value="asc" <?= $sort_order === 'ASC' ? 'selected' : '' ?>>По возрастанию</option>
@@ -1633,12 +1622,11 @@ $stmt->close();
                                     </div>
                                     <p><i class="fas fa-money"></i> Общая стоимость: <?= number_format($tour['total_tour_price'], 2, ',', ' ') ?> ₽</p>
                                 </div>
-                               <span class="booking-status status-<?= strtolower($reservation['booking_status'] ?? 'pending') ?>">
+                                <span class="booking-status status-<?= strtolower($reservation['booking_status'] ?? 'pending') ?>">
     <?= $reservation['booking_status'] === 'pending' ? 'В обработке' : 
         ($reservation['booking_status'] === 'confirmed' ? 'Подтверждено' : 'Отменено') ?>
 </span>
                             </div>
-                            
                             <div class="booking-body">
                                 <?php foreach ($tour['reservations'] as $reservation): ?>
                                     <div class="reservation-item">
@@ -1646,25 +1634,21 @@ $stmt->close();
                                             <h4>Пакет</h4>
                                             <p><?= htmlspecialchars($reservation['package_name'] ?? 'Без пакета') ?></p>
                                         </div>
-                                        
                                         <div class="reservation-detail">
                                             <h4>Количество человек</h4>
                                             <p><?= htmlspecialchars($reservation['persons'] ?? 1) ?></p>
                                         </div>
-                                        
                                         <div class="reservation-detail">
                                             <h4>Дата бронирования</h4>
                                             <p><?= date('d.m.Y H:i', strtotime($reservation['created_at'])) ?></p>
                                         </div>
-                                        
                                         <div class="reservation-price">
-                                            <p>Стоимость</p>
+                                            <h4>Стоимость</h4>
                                             <p><?= number_format($reservation['total_price'], 2, ',', ' ') ?> ₽</p>
                                         </div>
                                     </div>
                                 <?php endforeach; ?>
                             </div>
-                            
                             <div class="booking-actions">
                                 <?php foreach ($tour['reservations'] as $reservation): ?>
                                     <a href="?cancel=1&booking_id=<?= $reservation['id'] ?>" class="btn btn-danger" onclick="return confirm('Вы точно уверены, что хотите отменить бронирование?');">
@@ -1718,285 +1702,278 @@ $stmt->close();
             }
         }
 
-       // ... другой JavaScript-код ...
-     function openTicket(booking) {
-         try {
-             console.log("Booking data:", booking);
-             const modal = document.getElementById('ticketModal');
-             const ticket = document.getElementById('ticketContent');
-             
-             if (!booking || !booking.id || !booking.title) {
-                 throw new Error("Недостаточно данных для бронирования: id=" + (booking?.id ?? 'missing') + ", title=" + (booking?.title ?? 'missing'));
-             }
-
-             ticket.innerHTML = `
-                 <button class="ticket-close" onclick="closeTicket()">×</button>
-                 <div class="ticket-main">
-                     <div style="text-align: center; margin-bottom: 20px;">
-                         <img src="${booking.image_url || 'https://via.placeholder.com/100'}" alt="Тур" style="width: 100px; height: auto; border-radius: 10px; object-fit: cover;">
-                     </div>
-                     <div class="ticket-header">
-                         <div class="logo">
-                             <i class="fas fa-plane"></i> iTravel
-                         </div>
-                         <div class="ticket-id">
-                             Билет #${booking.id}
-                         </div>
-                     </div>
-                     <div class="ticket-info">
-                         <div class="ticket-info-item">
-                             <i class="fas fa-user"></i>
-                             <div>
-                                 <h3>Клиент</h3>
-                                 <p>${booking.username}</p>
-                             </div>
-                         </div>
-                         <div class="ticket-info-item">
-                             <i class="fas fa-map-marker-alt"></i>
-                             <div>
-                                 <h3>Направление</h3>
-                                 <p>${booking.destination}</p>
-                             </div>
-                         </div>
-                         <div class="ticket-info-item">
-                             <i class="far fa-calendar-alt"></i>
-                             <div>
-                                 <h3>Даты поездки</h3>
-                                 <p>${new Date(booking.start_date).toLocaleDateString('ru-RU')} - ${new Date(booking.end_date).toLocaleDateString('ru-RU')}</p>
-                             </div>
-                         </div>
-                         <div class="ticket-info-item">
-                             <i class="fas fa-box"></i>
-                             <div>
-                                 <h3>Пакет</h3>
-                                 <p>${booking.package_name || 'Без пакета'}</p>
-                             </div>
-                         </div>
-                         <div class="ticket-info-item">
-                             <i class="fas fa-users"></i>
-                             <div>
-                                 <h3>Количество человек</h3>
-                                 <p>${booking.persons}</p>
-                             </div>
-                         </div>
-                         <div class="ticket-info-item">
-                             <i class="fas fa-check-circle"></i>
-                             <div>
-                                 <h3>Статус</h3>
-                                 <p>${booking.booking_status === 'pending' ? 'В обработке' : 
-                                     (booking.booking_status === 'confirmed' ? 'Подтверждено' : 'Отменено')}</p>
-                             </div>
-                         </div>
-                         <div class="ticket-info-item">
-                             <i class="fas fa-ruble-sign"></i>
-                             <div>
-                                 <h3>Стоимость</h3>
-                                 <p>${new Intl.NumberFormat('ru-RU').format(booking.total_price)} ₽</p>
-                             </div>
-                         </div>
-                     </div>
-                     <div class="ticket-footer">
-                         <div class="contact-info">
-                             <p><i class="fas fa-envelope"></i> support@example.com</p>
-                             <p><i class="fas fa-phone"></i> +7 (495) 123-4567</p>
-                             <p style="font-size: 12px; color: #555; margin-top: 10px;">
-                                 Данный документ не является предметом передачи или продажи. Он предназначен исключительно для подтверждения права доступа к поездке. Оригинальный проездной документ будет выдан организатором на месте проведения тура.
-                             </p>
-                         </div>
-                         <button class="download-btn" onclick="downloadTicket()">
-                             <i class="fas fa-download"></i> Скачать билет
-                         </button>
-                     </div>
-                 </div>
-                 <div class="ticket-side">
-                     <div class="qr-code">
-                         <img src="https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(`Бронирование #${booking.id}\nТур: ${booking.title}\nКлиент: ${booking.username}\nДаты: ${booking.start_date} - ${booking.end_date}\nСтатус: ${booking.booking_status === 'pending' ? 'В обработке' : (booking.booking_status === 'confirmed' ? 'Подтверждено' : 'Отменено')}\nСтоимость: ${new Intl.NumberFormat('ru-RU').format(booking.total_price)} ₽\nДата выдачи: ${new Date().toLocaleString('ru-RU')}`)}" alt="QR code" crossOrigin="anonymous">
-                     </div>
-                     <div class="barcode">
-                         <svg id="barcode-${booking.id}"></svg>
-                     </div>
-                     <div class="issue-date">
-                         Выдан: ${new Date().toLocaleString('ru-RU')}
-                     </div>
-                 </div>
-             `;
-             
-             JsBarcode(`#barcode-${booking.id}`, String(booking.id).padStart(10, '0'), {
-                 format: "CODE128",
-                 width: 2,
-                 height: 40,
-                 displayValue: false,
-                 background: "transparent",
-                 lineColor: "#ffffff"
-             });
-
-             modal.style.display = 'flex';
-             document.body.style.overflow = 'hidden';
-         } catch (error) {
-             console.error("Ошибка при открытии билета:", error.message);
-             alert("Ошибка при открытии билета. Проверьте консоль для подробностей.");
-         }
-     }
-
-   function downloadTicket() {
-    try {
-        const ticketContent = document.getElementById('ticketContent');
-        if (!ticketContent) throw new Error("Контейнер билета не найден");
-
-        const downloadBtn = ticketContent.querySelector('.download-btn');
-        if (downloadBtn) downloadBtn.style.display = 'none';
-
-        const images = ticketContent.getElementsByTagName('img');
-        let loadedImages = 0;
-        const totalImages = images.length;
-
-        function renderTicket() {
-            html2canvas(ticketContent, { scale: 2, useCORS: true, allowTaint: false, logging: true })
-                .then(canvas => {
-                    const link = document.createElement('a');
-                    link.download = `itravel-ticket-${new Date().toLocaleDateString('ru-RU')}.png`;
-                    const dataUrl = canvas.toDataURL('image/png');
-                    if (!dataUrl || dataUrl === 'data:,') throw new Error('Не удалось создать изображение билета');
-                    link.href = dataUrl;
-                    link.click();
-                    if (downloadBtn) downloadBtn.style.display = 'flex';
-                })
-                .catch(error => {
-                    console.error("Ошибка при рендеринге билета:", error);
-                    if (downloadBtn) downloadBtn.style.display = 'flex';
-                    alert("Не удалось скачать билет.");
-                });
-        }
-
-        if (totalImages === 0) {
-            renderTicket();
-        } else {
-            const timeout = setTimeout(() => {
-                console.warn("Таймаут загрузки изображений");
-                renderTicket();
-            }, 5000);
-
-            for (let img of images) {
-                if (img.complete && img.naturalHeight !== 0) {
-                    loadedImages++;
-                } else {
-                    img.onload = () => {
-                        loadedImages++;
-                        if (loadedImages === totalImages) {
-                            clearTimeout(timeout);
-                            renderTicket();
-                        }
-                    };
-                    img.onerror = () => {
-                        console.error("Ошибка загрузки изображения:", img.src);
-                        loadedImages++;
-                        if (loadedImages === totalImages) {
-                            clearTimeout(timeout);
-                            renderTicket();
-                        }
-                    };
+        function openTicket(booking) {
+            try {
+                console.log("Booking data:", booking);
+                const modal = document.getElementById('ticketModal');
+                const ticket = document.getElementById('ticketContent');
+                
+                if (!booking || !booking.id || !booking.title) {
+                    throw new Error("Недостаточно данных для бронирования: id=" + (booking?.id ?? 'missing') + ", title=" + (booking?.title ?? 'missing'));
                 }
-            }
 
-            if (loadedImages === totalImages) {
-                clearTimeout(timeout);
-                renderTicket();
+                ticket.innerHTML = `
+                    <button class="ticket-close" onclick="closeTicket()">×</button>
+                    <div class="ticket-main">
+                        <div style="text-align: center; margin-bottom: 20px;">
+                            <img src="${booking.image_url || 'https://via.placeholder.com/100'}" alt="Тур" style="width: 100px; height: auto; border-radius: 10px; object-fit: cover;">
+                        </div>
+                        <div class="ticket-header">
+                            <div class="logo">
+                                <i class="fas fa-plane"></i> iTravel
+                            </div>
+                            <div class="ticket-id">
+                                Билет #${booking.id}
+                            </div>
+                        </div>
+                        <div class="ticket-info">
+                            <div class="ticket-info-item">
+                                <i class="fas fa-user"></i>
+                                <div>
+                                    <h3>Клиент</h3>
+                                    <p>${booking.username}</p>
+                                </div>
+                            </div>
+                            <div class="ticket-info-item">
+                                <i class="fas fa-map-marker-alt"></i>
+                                <div>
+                                    <h3>Направление</h3>
+                                    <p>${booking.destination}</p>
+                                </div>
+                            </div>
+                            <div class="ticket-info-item">
+                                <i class="far fa-calendar-alt"></i>
+                                <div>
+                                    <h3>Даты поездки</h3>
+                                    <p>${new Date(booking.start_date).toLocaleDateString('ru-RU')} - ${new Date(booking.end_date).toLocaleDateString('ru-RU')}</p>
+                                </div>
+                            </div>
+                            <div class="ticket-info-item">
+                                <i class="fas fa-box"></i>
+                                <div>
+                                    <h3>Пакет</h3>
+                                    <p>${booking.package_name || 'Без пакета'}</p>
+                                </div>
+                            </div>
+                            <div class="ticket-info-item">
+                                <i class="fas fa-users"></i>
+                                <div>
+                                    <h3>Количество человек</h3>
+                                    <p>${booking.persons}</p>
+                                </div>
+                            </div>
+                            <div class="ticket-info-item">
+                                <i class="fas fa-check-circle"></i>
+                                <div>
+                                    <h3>Статус</h3>
+                                    <p>${booking.booking_status === 'pending' ? 'В обработке' : 
+                                        (booking.booking_status === 'confirmed' ? 'Подтверждено' : 'Отменено')}</p>
+                                </div>
+                            </div>
+                            <div class="ticket-info-item">
+                                <i class="fas fa-ruble-sign"></i>
+                                <div>
+                                    <h3>Стоимость</h3>
+                                    <p>${new Intl.NumberFormat('ru-RU').format(booking.total_price)} ₽</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="ticket-footer">
+                            <div class="contact-info">
+                                <p><i class="fas fa-envelope"></i> support@example.com</p>
+                                <p><i class="fas fa-phone"></i> +7 (495) 123-4567</p>
+                                <p style="font-size: 12px; color: #555; margin-top: 10px;">
+                                    Данный документ не является предметом передачи или продажи. Он предназначен исключительно для подтверждения права доступа к поездке. Оригинальный проездной документ будет выдан организатором на месте проведения тура.
+                                </p>
+                            </div>
+                            <button class="download-btn" onclick="downloadTicket()">
+                                <i class="fas fa-download"></i> Скачать билет
+                            </button>
+                        </div>
+                    </div>
+                    <div class="ticket-side">
+                        <div class="qr-code">
+                            <img src="https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(`Бронирование #${booking.id}\nТур: ${booking.title}\nКлиент: ${booking.username}\nДаты: ${booking.start_date} - ${booking.end_date}\nСтатус: ${booking.booking_status === 'pending' ? 'В обработке' : (booking.booking_status === 'confirmed' ? 'Подтверждено' : 'Отменено')}\nСтоимость: ${new Intl.NumberFormat('ru-RU').format(booking.total_price)} ₽\nДата выдачи: ${new Date().toLocaleString('ru-RU')}`)}" alt="QR code" crossOrigin="anonymous">
+                        </div>
+                        <div class="barcode">
+                            <svg id="barcode-${booking.id}"></svg>
+                        </div>
+                        <div class="issue-date">
+                            Выдан: ${new Date().toLocaleString('ru-RU')}
+                        </div>
+                    </div>
+                `;
+                
+                JsBarcode(`#barcode-${booking.id}`, String(booking.id).padStart(10, '0'), {
+                    format: "CODE128",
+                    width: 2,
+                    height: 40,
+                    displayValue: false,
+                    background: "transparent",
+                    lineColor: "#ffffff"
+                });
+
+                modal.style.display = 'flex';
+                document.body.style.overflow = 'hidden';
+            } catch (error) {
+                console.error("Ошибка при открытии билета:", error.message);
+                alert("Ошибка при открытии билета. Проверьте консоль для подробностей.");
             }
         }
-    } catch (error) {
-        console.error("Ошибка при скачивании билета:", error);
-        const downloadBtn = document.querySelector('.download-btn');
-        if (downloadBtn) downloadBtn.style.display = 'flex';
-        alert("Не удалось скачать билет.");
-    }
-}
 
-            
+        function downloadTicket() {
+            try {
+                const ticketContent = document.getElementById('ticketContent');
+                if (!ticketContent) throw new Error("Контейнер билета не найден");
+
+                const downloadBtn = ticketContent.querySelector('.download-btn');
+                if (downloadBtn) downloadBtn.style.display = 'none';
+
+                const images = ticketContent.getElementsByTagName('img');
+                let loadedImages = 0;
+                const totalImages = images.length;
+
+                function renderTicket() {
+                    html2canvas(ticketContent, { scale: 2, useCORS: true, allowTaint: false, logging: true })
+                        .then(canvas => {
+                            const link = document.createElement('a');
+                            link.download = `itravel-ticket-${new Date().toLocaleDateString('ru-RU')}.png`;
+                            const dataUrl = canvas.toDataURL('image/png');
+                            if (!dataUrl || dataUrl === 'data:,') throw new Error('Не удалось создать изображение билета');
+                            link.href = dataUrl;
+                            link.click();
+                            if (downloadBtn) downloadBtn.style.display = 'flex';
+                        })
+                        .catch(error => {
+                            console.error("Ошибка при рендеринге билета:", error);
+                            if (downloadBtn) downloadBtn.style.display = 'flex';
+                            alert("Не удалось скачать билет.");
+                        });
+                }
+
+                if (totalImages === 0) {
+                    renderTicket();
+                } else {
+                    const timeout = setTimeout(() => {
+                        console.warn("Таймаут загрузки изображений");
+                        renderTicket();
+                    }, 5000);
+
+                    for (let img of images) {
+                        if (img.complete && img.naturalHeight !== 0) {
+                            loadedImages++;
+                        } else {
+                            img.onload = () => {
+                                loadedImages++;
+                                if (loadedImages === totalImages) {
+                                    clearTimeout(timeout);
+                                    renderTicket();
+                                }
+                            };
+                            img.onerror = () => {
+                                console.error("Ошибка загрузки изображения:", img.src);
+                                loadedImages++;
+                                if (loadedImages === totalImages) {
+                                    clearTimeout(timeout);
+                                    renderTicket();
+                                }
+                            };
+                        }
+                    }
+
+                    if (loadedImages === totalImages) {
+                        clearTimeout(timeout);
+                        renderTicket();
+                    }
+                }
+            } catch (error) {
+                console.error("Ошибка при скачивании билета:", error);
+                const downloadBtn = document.querySelector('.download-btn');
+                if (downloadBtn) downloadBtn.style.display = 'flex';
+                alert("Не удалось скачать билет.");
+            }
+        }
 
         function closeTicket() {
             document.getElementById('ticketModal').style.display = 'none';
             document.body.style.overflow = 'auto';
         }
 
-    
-
-        
-
-      flatpickr("#calendar", {
-    inline: true,
-    dateFormat: "Y-m-d",
-    locale: "ru",
-    onChange: function(selectedDates, dateStr, instance) {
-        displayEvents(dateStr);
-    },
-    onReady: function(selectedDates, dateStr, instance) {
-        const days = instance.days;
-        bookings.forEach(tour => {
-            tour.reservations.forEach(reservation => {
-                const startDate = new Date(tour.start_date).toISOString().split('T')[0];
-                const endDate = new Date(tour.end_date).toISOString().split('T')[0];
-                days.forEach(day => {
-                    const dayDate = day.dateObj.toISOString().split('T')[0];
-                    if (dayDate >= startDate && dayDate <= endDate) {
-                        day.classList.add('hasEvent');
-                        day.classList.add(reservation.booking_status.toLowerCase());
-                        const eventCount = days.filter(d => {
-                            const dDate = d.dateObj.toISOString().split('T')[0];
-                            return dDate >= startDate && dDate <= endDate;
-                        }).length;
-                        day.setAttribute('data-event-count', eventCount);
-                    }
+        flatpickr("#calendar", {
+            inline: true,
+            dateFormat: "Y-m-d",
+            locale: "ru",
+            onChange: function(selectedDates, dateStr, instance) {
+                displayEvents(dateStr);
+            },
+            onReady: function(selectedDates, dateStr, instance) {
+                const days = instance.days;
+                bookings.forEach(tour => {
+                    tour.reservations.forEach(reservation => {
+                        const startDate = new Date(tour.start_date).toISOString().split('T')[0];
+                        const endDate = new Date(tour.end_date).toISOString().split('T')[0];
+                        days.forEach(day => {
+                            const dayDate = day.dateObj.toISOString().split('T')[0];
+                            if (dayDate >= startDate && dayDate <= endDate) {
+                                day.classList.add('hasEvent');
+                                day.classList.add(reservation.booking_status.toLowerCase());
+                                const eventCount = days.filter(d => {
+                                    const dDate = d.dateObj.toISOString().split('T')[0];
+                                    return dDate >= startDate && dDate <= endDate;
+                                }).length;
+                                day.setAttribute('data-event-count', eventCount);
+                            }
+                        });
+                        instance.setDate([tour.start_date, tour.end_date], false);
+                    });
                 });
-                instance.setDate([tour.start_date, tour.end_date], false);
-            });
-        });
-        displayEvents(dateStr);
-    }
-});
-
-       function displayEvents(date) {
-    const eventsContainer = document.getElementById('calendar-events');
-    let html = '<h4>События на ' + new Date(date).toLocaleDateString('ru-RU') + '</h4>';
-    let hasEvents = false;
-
-    bookings.forEach(tour => {
-        tour.reservations.forEach(reservation => {
-            const startDate = new Date(tour.start_date).toISOString().split('T')[0];
-            const endDate = new Date(tour.end_date).toISOString().split('T')[0];
-            if (date >= startDate && date <= endDate) {
-                hasEvents = true;
-                html += `
-                    <div class="event-item" onclick="openTicket(${JSON.stringify({
-                        id: reservation.id,
-                        title: tour.title,
-                        destination: tour.destination,
-                        start_date: tour.start_date,
-                        end_date: tour.end_date,
-                        booking_status: reservation.booking_status,
-                        package_name: reservation.package_name,
-                        persons: reservation.persons,
-                        total_price: reservation.total_price,
-                        image_url: tour.image_url
-                    }).replace(/'/g, "\\'")})" style="cursor: pointer;">
-                        <p><strong>${tour.title}</strong></p>
-                        <p><i class="fas fa-map-marker-alt"></i> ${tour.destination}</p>
-                        <p><i class="far fa-calendar-alt"></i> ${new Date(tour.start_date).toLocaleDateString('ru-RU')} - ${new Date(tour.end_date).toLocaleDateString('ru-RU')}</p>
-                        <p><i class="fas fa-box"></i> ${reservation.package_name || 'Без пакета'}</p>
-                        <p><i class="fas fa-users"></i> ${reservation.persons} чел.</p>
-                        <p><i class="fas fa-ruble-sign"></i> ${new Intl.NumberFormat('ru-RU').format(reservation.total_price)} ₽</p>
-                        <p><i class="fas fa-info-circle"></i> Статус: ${reservation.booking_status === 'pending' ? 'В обработке' : (reservation.booking_status === 'confirmed' ? 'Подтверждено' : 'Отменено')}</p>
-                    </div>
-                `;
+                displayEvents(dateStr);
             }
         });
-    });
 
-    if (!hasEvents) {
-        html += '<p>Нет событий на эту дату.</p>';
-    }
+        function displayEvents(date) {
+            const eventsContainer = document.getElementById('calendar-events');
+            let html = '<h4>События на ' + new Date(date).toLocaleDateString('ru-RU') + '</h4>';
+            let hasEvents = false;
 
-    eventsContainer.innerHTML = html;
-}
+            bookings.forEach(tour => {
+                tour.reservations.forEach(reservation => {
+                    const startDate = new Date(tour.start_date).toISOString().split('T')[0];
+                    const endDate = new Date(tour.end_date).toISOString().split('T')[0];
+                    if (date >= startDate && date <= endDate) {
+                        hasEvents = true;
+                        html += `
+                            <div class="event-item" onclick="openTicket(${JSON.stringify({
+                                id: reservation.id,
+                                title: tour.title,
+                                destination: tour.destination,
+                                start_date: tour.start_date,
+                                end_date: tour.end_date,
+                                booking_status: reservation.booking_status,
+                                package_name: reservation.package_name,
+                                persons: reservation.persons,
+                                total_price: reservation.total_price,
+                                image_url: tour.image_url
+                            }).replace(/'/g, "\\'")})" style="cursor: pointer;">
+                                <p><strong>${tour.title}</strong></p>
+                                <p><i class="fas fa-map-marker-alt"></i> ${tour.destination}</p>
+                                <p><i class="far fa-calendar-alt"></i> ${new Date(tour.start_date).toLocaleDateString('ru-RU')} - ${new Date(tour.end_date).toLocaleDateString('ru-RU')}</p>
+                                <p><i class="fas fa-box"></i> ${reservation.package_name || 'Без пакета'}</p>
+                                <p><i class="fas fa-users"></i> ${reservation.persons} чел.</p>
+                                <p><i class="fas fa-ruble-sign"></i> ${new Intl.NumberFormat('ru-RU').format(reservation.total_price)} ₽</p>
+                                <p><i class="fas fa-info-circle"></i> Статус: ${reservation.booking_status === 'pending' ? 'В обработке' : (reservation.booking_status === 'confirmed' ? 'Подтверждено' : 'Отменено')}</p>
+                            </div>
+                        `;
+                    }
+                });
+            });
+
+            if (!hasEvents) {
+                html += '<p>Нет событий на эту дату.</p>';
+            }
+
+            eventsContainer.innerHTML = html;
+        }
 
         window.onclick = function(event) {
             if (event.target == document.getElementById('ticketModal')) {
@@ -2009,7 +1986,6 @@ $stmt->close();
             email: '<?php echo htmlspecialchars($user['email']); ?>'
         };
 
-        // Показываем секцию 'glavn' по умолчанию
         showSection('glavn');
     </script>
 </body>

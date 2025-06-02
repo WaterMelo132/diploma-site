@@ -1366,6 +1366,7 @@ try {
             class: '',
             color: '#64748b'
         };
+        
 
         transportInfo.innerHTML = `
             <i class="fas fa-${transport.icon} ${tour.status === 'active' ? 'transport-icon-active ' + transport.class : ''}" 
@@ -1522,7 +1523,7 @@ try {
         };
     }
 
-   function bookTour(tourId, name, phone, email, packageId, packageName, persons) {
+  function bookTour(tourId, name, phone, email, packageId, packageName, persons) {
     const tour = toursData.find(t => t.id == tourId);
     if (!tour) {
         alert('Тур не найден!');
@@ -1536,15 +1537,22 @@ try {
         return;
     }
 
+    // Находим выбранный пакет
+    const selectedPackage = packageId ? tour.packages.find(pkg => pkg.id == packageId) : null;
+    // Рассчитываем общую цену: базовая цена тура + цена пакета (если выбран)
+    const packagePrice = selectedPackage && selectedPackage.price ? Number(selectedPackage.price) : 0;
+    const tourPrice = Number(tour.discount_price || tour.price || 0);
+    const totalPrice = (tourPrice + packagePrice) * persons;
+
     const payload = {
         travel_id: tourId,
         name: name,
         phone: phone,
         email: email,
         package_id: packageId,
-        user_id: userId,  // Добавляем user_id в payload
+        user_id: userId,
         persons: persons,
-        price: tour.discount_price || tour.price || 0
+        price: totalPrice // Передаем общую цену
     };
 
     fetch('/book_tour.php', {
@@ -1567,7 +1575,7 @@ try {
         if (data.success) {
             bookingForm.classList.remove('show');
             successMessage.classList.add('show');
-            successText.textContent = `Тур успешно забронирован для ${persons} человек по цене ${Number(tour.discount_price || tour.price || 0).toLocaleString('ru-RU')} руб.! Мы свяжемся с вами для подтверждения.`;
+            successText.textContent = `Тур успешно забронирован для ${persons} человек по цене ${Number(totalPrice).toLocaleString('ru-RU')} руб.! Мы свяжемся с вами для подтверждения.`;
             modalButton.style.display = 'none';
         } else {
             alert(data.message || 'Ошибка бронирования. Попробуйте снова.');
