@@ -12,8 +12,30 @@ require_once('config.php');
 // Обработка ошибок базы данных
 mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
 
+// Кэширование статистики (временное, хранится 5 минут)
+$cache_file = 'cache/admin_stats.json';
+$cache_time = 300; // 5 минут
+
+function getCachedData($cache_file, $cache_time) {
+    if (file_exists($cache_file) && (time() - filemtime($cache_file)) < $cache_time) {
+        return json_decode(file_get_contents($cache_file), true);
+    }
+    return false;
+}
+
+function saveCacheData($cache_file, $data) {
+    $cache_dir = dirname($cache_file);
+    if (!is_dir($cache_dir)) {
+        mkdir($cache_dir, 0755, true);
+    }
+    if (!is_writable($cache_dir)) {
+        error_log("Cache directory ($cache_dir) is not writable.");
+        return false;
+    }
+    return file_put_contents($cache_file, json_encode($data));
+}
+
 try {
-    // Получение данных текущего пользователя
     $stmt = $conn->prepare("SELECT username FROM users WHERE id = ?");
     $stmt->bind_param('i', $_SESSION['user_id']);
     $stmt->execute();
@@ -24,8 +46,8 @@ try {
         die("Ошибка: Пользователь не найден.");
     }
 
-    $error = '';
-    $success = '';
+    $error = isset($_GET['error']) ? urldecode($_GET['error']) : '';
+    $success = isset($_GET['success']) ? urldecode($_GET['success']) : '';
 
     // Обработка редактирования пользователя
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_user'])) {
@@ -41,15 +63,12 @@ try {
         } elseif (!in_array($role, ['admin', 'user'])) {
             $error = 'Неверная роль пользователя.';
         } else {
-            // Проверка, не занят ли email
             $stmt = $conn->prepare("SELECT id FROM users WHERE email = ? AND id != ?");
             $stmt->bind_param('si', $email, $user_id);
             $stmt->execute();
-            $result = $stmt->get_result();
-            if ($result->fetch_assoc()) {
+            if ($stmt->get_result()->fetch_assoc()) {
                 $error = 'Этот email уже используется.';
             } else {
-                // Обновление пользователя
                 $stmt = $conn->prepare("UPDATE users SET username = ?, email = ?, role = ? WHERE id = ?");
                 $stmt->bind_param('sssi', $username, $email, $role, $user_id);
                 $stmt->execute();
@@ -67,9 +86,11 @@ try {
         $start_date = trim($_POST['start_date'] ?? '');
         $end_date = trim($_POST['end_date'] ?? '');
         $status = trim($_POST['status'] ?? '');
+        $image = trim($_POST['image'] ?? '');
+        $images = trim($_POST['images'] ?? '');
 
         if (empty($title) || empty($destination) || empty($start_date) || empty($end_date) || empty($status)) {
-            $error = 'Все поля обязательны для тура.';
+            $error = 'Все обязательные поля для тура должны быть заполнены.';
         } elseif (!in_array($status, ['active', 'inactive'])) {
             $error = 'Неверный статус тура.';
         } elseif (strtotime($start_date) === false || strtotime($end_date) === false) {
@@ -77,11 +98,49 @@ try {
         } elseif (strtotime($start_date) > strtotime($end_date)) {
             $error = 'Дата начала не может быть позже даты окончания.';
         } else {
-            $stmt = $conn->prepare("UPDATE travels SET title = ?, destination = ?, start_date = ?, end_date = ?, status = ? WHERE id = ?");
-            $stmt->bind_param('sssssi', $title, $destination, $start_date, $end_date, $status, $tour_id);
+            if (!empty($image) && !filter_var($image, FILTER_VALIDATE_URL)) {
+                $error = 'Неверный формат URL для основного фото.';
+            } else {
+                $images_array = array_filter(array_map('trim', explode(',', $images)));
+                foreach ($images_array as $photo) {
+                    if (!empty($photo) && !filter_var($photo, FILTER_VALIDATE_URL)) {
+                        $error = 'Неверный формат URL для дополнительного фото: ' . htmlspecialchars($photo);
+                        break;
+                    }
+                }
+                if (empty($error)) {
+                    $images_string = implode(',', $images_array);
+                    $stmt = $conn->prepare("UPDATE travels SET title = ?, destination = ?, start_date = ?, end_date = ?, status = ?, image = ?, images = ? WHERE id = ?");
+                    $stmt->bind_param('sssssssi', $title, $destination, $start_date, $end_date, $status, $image, $images_string, $tour_id);
+                    $stmt->execute();
+                    $stmt->close();
+                    $success = 'Тур успешно обновлен.';
+                }
+            }
+        }
+    }
+
+    // Обработка удаления тура
+    if (isset($_GET['delete_tour']) && isset($_GET['tour_id'])) {
+        $tour_id = (int)$_GET['tour_id'];
+        $stmt = $conn->prepare("SELECT COUNT(*) as booking_count FROM tour_bookings WHERE travel_id = ?");
+        $stmt->bind_param('i', $tour_id);
+        $stmt->execute();
+        $result = $stmt->get_result()->fetch_assoc();
+        $booking_count = $result['booking_count'];
+        $stmt->close();
+
+        if ($booking_count > 0) {
+            $error_message = "Нельзя удалить тур: на него зарегистрировано $booking_count бронирований.";
+            header('Location: admin.php?error=' . urlencode($error_message));
+            exit;
+        } else {
+            $stmt = $conn->prepare("DELETE FROM travels WHERE id = ?");
+            $stmt->bind_param('i', $tour_id);
             $stmt->execute();
             $stmt->close();
-            $success = 'Тур успешно обновлен.';
+            header('Location: admin.php?success=' . urlencode('Тур успешно удален.'));
+            exit;
         }
     }
 
@@ -100,8 +159,7 @@ try {
             $stmt = $conn->prepare("SELECT id FROM packages WHERE id = ?");
             $stmt->bind_param('i', $package_id);
             $stmt->execute();
-            $result = $stmt->get_result();
-            if (!$result->fetch_assoc()) {
+            if (!$stmt->get_result()->fetch_assoc()) {
                 $error = 'Выбранный пакет не существует.';
             } else {
                 $stmt = $conn->prepare("UPDATE tour_bookings SET status = ?, persons = ?, package_id = ? WHERE id = ?");
@@ -112,55 +170,147 @@ try {
             $stmt->close();
         }
     }
+    if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_SERVER['CONTENT_TYPE']) && strpos($_SERVER['CONTENT_TYPE'], 'application/json') !== false) {
+    $data = json_decode(file_get_contents('php://input'), true);
+    if (isset($data['action']) && $data['action'] === 'save_package') {
+        header('Content-Type: application/json');
+        $response = ['success' => false, 'message' => ''];
+        try {
+            $name = $conn->real_escape_string($data['name']);
+            $price = $conn->real_escape_string($data['price']);
+            $description = $conn->real_escape_string($data['description'] ?? '');
+            $services = $data['services'];
+            $stmt = $conn->prepare("INSERT INTO packages (name, price, description) VALUES (?, ?, ?)");
+$stmt->bind_param('sss', $name, $price, $description);
+            $stmt->execute();
+            $package_id = $conn->insert_id;
+            $stmt->close();
+            $stmt = $conn->prepare("INSERT INTO package_services (package_id, service_id) VALUES (?, ?)");
+            foreach ($services as $service_id) {
+                $stmt->bind_param('ii', $package_id, $service_id);
+                $stmt->execute();
+            }
+            $stmt->close();
+            $response['success'] = true;
+            $response['message'] = 'Пакет успешно создан';
+        } catch (Exception $e) {
+            $response['message'] = 'Ошибка: ' . $e->getMessage();
+        }
+        echo json_encode($response);
+        exit;
+    }
+}
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_SERVER['CONTENT_TYPE']) && strpos($_SERVER['CONTENT_TYPE'], 'application/json') !== false) {
+    $data = json_decode(file_get_contents('php://input'), true);
+    if (isset($data['action'])) {
+        header('Content-Type: application/json');
+        $response = ['success' => false, 'message' => ''];
 
-    // Подсчет статистики
-    $stmt = $conn->prepare("SELECT COUNT(*) as user_count FROM users");
-    $stmt->execute();
-    $user_count = $stmt->get_result()->fetch_assoc()['user_count'];
-    $stmt->close();
-
-    $stmt = $conn->prepare("SELECT COUNT(*) as tour_count FROM travels WHERE status = 'active'");
-    $stmt->execute();
-    $tour_count = $stmt->get_result()->fetch_assoc()['tour_count'];
-    $stmt->close();
-
-    $stmt = $conn->prepare("SELECT COUNT(*) as booking_count FROM tour_bookings");
-    $stmt->execute();
-    $booking_count = $stmt->get_result()->fetch_assoc()['booking_count'];
-    $stmt->close();
-
-    $stmt = $conn->prepare("SELECT COUNT(*) as confirmed_count FROM tour_bookings WHERE status = 'confirmed'");
-    $stmt->execute();
-    $confirmed_count = $stmt->get_result()->fetch_assoc()['confirmed_count'];
-    $stmt->close();
-
-    // Получение списка пользователей
-    $stmt = $conn->prepare("SELECT id, username, email, role FROM users");
-    $stmt->execute();
-    $users = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
-    $stmt->close();
-
-    // Получение списка туров
-    $stmt = $conn->prepare("SELECT id, title, destination, start_date, end_date, status FROM travels");
-    $stmt->execute();
-    $tours = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
-    $stmt->close();
-
-    // Получение списка бронирований
-    $stmt = $conn->prepare("SELECT tb.id, u.username, tb.phone, t.title, tb.status, tb.created_at, tb.persons, p.name AS package_name, tb.price, tb.package_id 
-                            FROM tour_bookings tb 
-                            LEFT JOIN users u ON tb.user_id = u.id 
-                            LEFT JOIN travels t ON tb.travel_id = t.id 
-                            LEFT JOIN packages p ON tb.package_id = p.id");
-    $stmt->execute();
-    $bookings = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
-    $stmt->close();
-
-    // Получение списка пакетов для формы бронирования
-    $stmt = $conn->prepare("SELECT id, name FROM packages");
-    $stmt->execute();
-    $packages = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
-    $stmt->close();
+        try {
+            if ($data['action'] === 'save_package') {
+                $name = $conn->real_escape_string($data['name']);
+                $price = $conn->real_escape_string($data['price']);
+                $description = $conn->real_escape_string($data['description'] ?? '');
+                $services = $data['services'];
+                $stmt = $conn->prepare("INSERT INTO packages (name, price, description) VALUES (?, ?, ?)");
+                $stmt->bind_param('sss', $name, $price, $description);
+                $stmt->execute();
+                $package_id = $conn->insert_id;
+                $stmt->close();
+                $stmt = $conn->prepare("INSERT INTO package_services (package_id, service_id) VALUES (?, ?)");
+                foreach ($services as $service_id) {
+                    $stmt->bind_param('ii', $package_id, $service_id);
+                    $stmt->execute();
+                }
+                $stmt->close();
+                $response['success'] = true;
+                $response['message'] = 'Пакет успешно создан';
+            } elseif ($data['action'] === 'update_package') {
+                $id = (int)$data['id'];
+                $name = $conn->real_escape_string($data['name']);
+                $price = $conn->real_escape_string($data['price']);
+                $description = $conn->real_escape_string($data['description'] ?? '');
+                $services = $data['services'];
+                $stmt = $conn->prepare("UPDATE packages SET name = ?, price = ?, description = ? WHERE id = ?");
+                $stmt->bind_param('sssi', $name, $price, $description, $id);
+                $stmt->execute();
+                $stmt->close();
+                $stmt = $conn->prepare("DELETE FROM package_services WHERE package_id = ?");
+                $stmt->bind_param('i', $id);
+                $stmt->execute();
+                $stmt->close();
+                $stmt = $conn->prepare("INSERT INTO package_services (package_id, service_id) VALUES (?, ?)");
+                foreach ($services as $service_id) {
+                    $stmt->bind_param('ii', $id, $service_id);
+                    $stmt->execute();
+                }
+                $stmt->close();
+                $response['success'] = true;
+                $response['message'] = 'Пакет успешно обновлен';
+            } elseif ($data['action'] === 'delete_package') {
+                $id = (int)$data['id'];
+                $stmt = $conn->prepare("DELETE FROM package_services WHERE package_id = ?");
+                $stmt->bind_param('i', $id);
+                $stmt->execute();
+                $stmt->close();
+                $stmt = $conn->prepare("DELETE FROM packages WHERE id = ?");
+                $stmt->bind_param('i', $id);
+                $stmt->execute();
+                $stmt->close();
+                $response['success'] = true;
+                $response['message'] = 'Пакет успешно удален';
+            } elseif ($data['action'] === 'save_service') {
+                $name = $conn->real_escape_string($data['name']);
+                $description = $conn->real_escape_string($data['description'] ?? '');
+                $stmt = $conn->prepare("INSERT INTO services (name, description) VALUES (?, ?)");
+                $stmt->bind_param('ss', $name, $description);
+                $stmt->execute();
+                $stmt->close();
+                $response['success'] = true;
+                $response['message'] = 'Услуга успешно создана';
+            } elseif ($data['action'] === 'update_service') {
+                $id = (int)$data['id'];
+                $name = $conn->real_escape_string($data['name']);
+                $description = $conn->real_escape_string($data['description'] ?? '');
+                $stmt = $conn->prepare("UPDATE services SET name = ?, description = ? WHERE id = ?");
+                $stmt->bind_param('ssi', $name, $description, $id);
+                $stmt->execute();
+                $stmt->close();
+                $response['success'] = true;
+                $response['message'] = 'Услуга успешно обновлена';
+            } elseif ($data['action'] === 'delete_service') {
+                $id = (int)$data['id'];
+                $stmt = $conn->prepare("DELETE FROM package_services WHERE service_id = ?");
+                $stmt->bind_param('i', $id);
+                $stmt->execute();
+                $stmt->close();
+                $stmt = $conn->prepare("DELETE FROM services WHERE id = ?");
+                $stmt->bind_param('i', $id);
+                $stmt->execute();
+                $stmt->close();
+                $response['success'] = true;
+                $response['message'] = 'Услуга успешно удалена';
+            } elseif ($data['action'] === 'get_package_services') {
+                $id = (int)$data['id'];
+                $stmt = $conn->prepare("SELECT service_id FROM package_services WHERE package_id = ?");
+                $stmt->bind_param('i', $id);
+                $stmt->execute();
+                $result = $stmt->get_result();
+                $services = [];
+                while ($row = $result->fetch_assoc()) {
+                    $services[] = $row['service_id'];
+                }
+                $stmt->close();
+                $response['success'] = true;
+                $response['services'] = $services;
+            }
+        } catch (Exception $e) {
+            $response['message'] = 'Ошибка: ' . $e->getMessage();
+        }
+        echo json_encode($response);
+        exit;
+    }
+}
 
     // Обработка отмены бронирования
     if (isset($_GET['cancel']) && isset($_GET['booking_id'])) {
@@ -169,11 +319,89 @@ try {
         $stmt->bind_param('i', $booking_id);
         $stmt->execute();
         $stmt->close();
-        header('Location: admin.php');
+        header('Location: admin.php?success=' . urlencode('Бронирование успешно отменено.'));
         exit;
     }
+
+    // Статистика
+    $stats = getCachedData($cache_file, $cache_time);
+    if (!$stats) {
+        $stmt = $conn->prepare("SELECT 
+            (SELECT COUNT(*) FROM users) as user_count,
+            (SELECT COUNT(*) FROM travels WHERE status = 'active') as tour_count,
+            (SELECT COUNT(*) FROM tour_bookings) as booking_count,
+            (SELECT COUNT(*) FROM tour_bookings WHERE status = 'confirmed') as confirmed_count");
+        $stmt->execute();
+        $stats = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+        saveCacheData($cache_file, $stats);
+    }
+
+    // Пагинация и выборка данных
+    $items_per_page = 10;
+    $user_page = max(1, (int)($_GET['user_page'] ?? 1));
+    $user_offset = ($user_page - 1) * $items_per_page;
+    $stmt = $conn->prepare("SELECT COUNT(*) as total FROM users");
+    $stmt->execute();
+    $total_users = $stmt->get_result()->fetch_assoc()['total'];
+    $stmt->close();
+    $stmt = $conn->prepare("SELECT id, username, email, role FROM users LIMIT ? OFFSET ?");
+    $stmt->bind_param('ii', $items_per_page, $user_offset);
+    $stmt->execute();
+    $users = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $stmt->close();
+
+    $tour_page = max(1, (int)($_GET['tour_page'] ?? 1));
+    $tour_offset = ($tour_page - 1) * $items_per_page;
+    $stmt = $conn->prepare("SELECT COUNT(*) as total FROM travels");
+    $stmt->execute();
+    $total_tours = $stmt->get_result()->fetch_assoc()['total'];
+    $stmt->close();
+    $stmt = $conn->prepare("SELECT id, title, destination, start_date, end_date, status, image, images FROM travels LIMIT ? OFFSET ?");
+    $stmt->bind_param('ii', $items_per_page, $tour_offset);
+    $stmt->execute();
+    $tours = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $stmt->close();
+
+    $booking_page = max(1, (int)($_GET['booking_page'] ?? 1));
+    $booking_offset = ($booking_page - 1) * $items_per_page;
+    $stmt = $conn->prepare("SELECT COUNT(*) as total FROM tour_bookings");
+    $stmt->execute();
+    $total_bookings = $stmt->get_result()->fetch_assoc()['total'];
+    $stmt->close();
+    $stmt = $conn->prepare("SELECT tb.id, u.username, tb.phone, t.title, tb.status, tb.created_at, tb.persons, p.name AS package_name, tb.price, tb.package_id 
+                           FROM tour_bookings tb 
+                           LEFT JOIN users u ON tb.user_id = u.id 
+                           LEFT JOIN travels t ON tb.travel_id = t.id 
+                           LEFT JOIN packages p ON tb.package_id = p.id 
+                           LIMIT ? OFFSET ?");
+    $stmt->bind_param('ii', $items_per_page, $booking_offset);
+    $stmt->execute();
+    $bookings = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $stmt->close();
+
+    
+$stmt = $conn->prepare("SELECT p.id, p.name, p.price, p.description, GROUP_CONCAT(s.name SEPARATOR ', ') as service_names 
+                        FROM packages p 
+                        LEFT JOIN package_services ps ON p.id = ps.package_id 
+                        LEFT JOIN services s ON ps.service_id = s.id 
+                        GROUP BY p.id");
+$stmt->execute();
+$packages_with_services = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+$stmt->close();
+
+    $stmt = $conn->prepare("SELECT id, name FROM packages");
+    $stmt->execute();
+    $packages = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $stmt->close();
+
+   $stmt = $conn->prepare("SELECT id, name, description FROM services");
+$stmt->execute();
+$services = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+$stmt->close();
+
 } catch (mysqli_sql_exception $e) {
-    error_log("Ошибка базы данных: " . $e->getMessage() . " (Код: " . $e->getCode() . ")", 3, 'C:/xampp/htdocs/travel/error.log');
+    error_log("Ошибка базы данных: " . $e->getMessage() . " (Код: " . $e->getCode() . ")", 3, 'error.log');
     die("Произошла ошибка базы данных: " . htmlspecialchars($e->getMessage()) . ". Пожалуйста, попробуйте позже.");
 }
 ?>
@@ -186,448 +414,741 @@ try {
     <title>Админ-панель | iTravel</title>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0/dist/chartjs-plugin-datalabels.min.js"></script>
+
     <style>
-        :root {
-            --primary: rgb(0, 68, 215);
-            --secondary: #4A90E2;
-            --white: #FFFFFF;
-            --light-bg: #F7F9FC;
-            --dark-text: #2D3748;
-            --gray: #A0AEC0;
-            --shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
-            --gradient: linear-gradient(135deg, #FF6F61, #4A90E2);
-        }
+    :root {
+        --primary: #0EA5E9;
+        --secondary: #1E3A8A;
+        --background: #F9FAFB;
+        --white: #FFFFFF;
+        --dark-text: #1E293B;
+        --gray: #6B7280;
+        --shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+        --border: #E5E7EB;
+        --error: #FEE2E2;
+        --error-text: #B91C1C;
+        --success: #D1FAE5;
+        --success-text: #065F46;
+    }
 
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+    * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+    }
 
-        body {
-            font-family: 'Poppins', sans-serif;
-            background: url('https://images.unsplash.com/photo-1507525428034-b723cf961d3e?ixlib=rb-4.0.3&auto=format&fit=crop&w=1950&q=80') no-repeat center center fixed;
-            background-size: cover;
-            color: var(--dark-text);
-            line-height: 1.6;
-            overflow-x: hidden;
-        }
+    body {
+        font-family: 'Poppins', sans-serif;
+        background: var(--background);
+        color: var(--dark-text);
+        line-height: 1.6;
+        overflow-x: hidden;
+    }
 
+    .container {
+        display: flex;
+        max-width: 1600px;
+        margin: 0 auto;
+        padding: 20px;
+        min-height: 100vh;
+        gap: 20px;
+    }
+
+    .sidebar {
+        width: 280px;
+        background: var(--white);
+        padding: 20px;
+        border-radius: 12px;
+        box-shadow: var(--shadow);
+        position: sticky;
+        top: 20px;
+        height: calc(100vh - 40px);
+        overflow-y: auto;
+    }
+
+    .sidebar .logo {
+        font-size: 26px;
+        font-weight: 700;
+        color: var(--primary);
+        margin-bottom: 30px;
+        text-align: center;
+        letter-spacing: 1px;
+    }
+
+    .menu a {
+        display: flex;
+        align-items: center;
+        padding: 12px 16px;
+        color: var(--dark-text);
+        text-decoration: none;
+        margin-bottom: 8px;
+        border-radius: 8px;
+        transition: background 0.3s ease, color 0.3s ease, transform 0.2s ease;
+    }
+
+    .menu a i {
+        margin-right: 12px;
+        font-size: 18px;
+        color: var(--gray);
+    }
+
+    .menu a:hover, .menu a.active {
+        background: var(--primary);
+        color: var(--white);
+        transform: translateX(5px);
+    }
+
+    .menu a:hover i, .menu a.active i {
+        color: var(--white);
+    }
+
+    .main-content {
+        flex: 1;
+        padding: 20px;
+        background: var(--background);
+        border-radius: 12px;
+    }
+
+    .header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+        background: var(--white);
+        padding: 15px 20px;
+        border-radius: 12px;
+        box-shadow: var(--shadow);
+    }
+
+    .header-title {
+        font-size: 26px;
+        font-weight: 600;
+        color: var(--dark-text);
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .header-title i {
+        color: var(--primary);
+    }
+
+    .profile {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    }
+
+    .profile img {
+        width: 44px;
+        height: 44px;
+        border-radius: 50%;
+        border: 2px solid var(--primary);
+        transition: transform 0.3s ease;
+    }
+
+    .profile img:hover {
+        transform: scale(1.1);
+    }
+
+    .profile-info h1 {
+        font-size: 16px;
+        font-weight: 600;
+        color: var(--dark-text);
+    }
+
+    .profile-info p {
+        font-size: 12px;
+        color: var(--gray);
+    }
+
+    .section {
+        background: var(--white);
+        border-radius: 12px;
+        box-shadow: var(--shadow);
+        padding: 20px;
+        margin-bottom: 20px;
+        transition: transform 0.3s ease;
+    }
+
+    .section:hover {
+        transform: translateY(-3px);
+    }
+
+    .section-title {
+        font-size: 20px;
+        font-weight: 600;
+        margin-bottom: 15px;
+        color: var(--dark-text);
+        border-left: 4px solid var(--primary);
+        padding-left: 10px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        cursor: pointer;
+    }
+
+    .section-title i {
+        color: var(--primary);
+    }
+
+    .section-content {
+        max-height: 0;
+        overflow: hidden;
+        transition: max-height 0.5s ease-in-out;
+    }
+
+    .section-content.active {
+        max-height: 2000px;
+        transition: max-height 0.5s ease-in-out;
+    }
+
+    .dashboard-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+        margin-bottom: 20px;
+    }
+
+    .dashboard-card {
+        background: var(--white);
+        padding: 20px;
+        border-radius: 12px;
+        text-align: center;
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
+        border: 1px solid var(--border);
+    }
+
+    .dashboard-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
+    }
+
+    .dashboard-card h3 {
+        font-size: 14px;
+        font-weight: 500;
+        margin-bottom: 10px;
+        color: var(--gray);
+        text-transform: uppercase;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+    }
+
+    .dashboard-card h3 i {
+        color: var(--primary);
+    }
+
+    .dashboard-card p {
+        font-size: 28px;
+        font-weight: 700;
+        color: var(--primary);
+    }
+
+    .chart-row {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 20px;
+        margin-bottom: 20px;
+    }
+
+    .chart-container {
+        background: var(--white);
+        padding: 20px;
+        border-radius: 12px;
+        box-shadow: var(--shadow);
+        border: 1px solid var(--border);
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+
+    .chart-container:hover {
+        transform: scale(1.02);
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
+    }
+
+    .chart-title {
+        font-size: 18px;
+        font-weight: 600;
+        color: var(--dark-text);
+        margin-bottom: 15px;
+        text-align: center;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+    }
+
+    .chart-title i {
+        color: var(--primary);
+    }
+
+    .bottom-row {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 20px;
+    }
+
+    .top-products, .service-level-container {
+        background: var(--white);
+        padding: 20px;
+        border-radius: 12px;
+        box-shadow: var(--shadow);
+        border: 1px solid var(--border);
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+
+    .service-level-container:hover {
+        transform: scale(1.02);
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
+    }
+
+    .top-products table, .table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 15px;
+    }
+
+    .top-products th, .top-products td, .table th, .table td {
+        padding: 12px;
+        text-align: left;
+        color: var(--dark-text);
+        border-bottom: 1px solid var(--border);
+    }
+
+    .top-products th, .table th {
+        font-weight: 600;
+        color: var(--white);
+        background: var(--primary);
+    }
+
+    .top-products td, .table td {
+        font-size: 14px;
+    }
+
+    .table tr:hover {
+        background: var(--background);
+    }
+
+    .btn {
+        padding: 8px 12px;
+        border-radius: 8px;
+        font-size: 13px;
+        cursor: pointer;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        transition: background 0.3s ease, transform 0.2s ease;
+    }
+
+    .btn-edit {
+        background: var(--primary);
+        color: var(--white);
+        margin-right: 8px;
+    }
+
+    .btn-edit:hover {
+        background: #0284C7;
+        transform: translateY(-2px);
+    }
+
+    .btn-delete {
+        background: #EF4444;
+        color: var(--white);
+    }
+
+    .btn-delete:hover {
+        background: #DC2626;
+        transform: translateY(-2px);
+    }
+
+    .btn-cancel {
+        background: #EF4444;
+        color: var(--white);
+    }
+
+    .btn-cancel:hover {
+        background: #DC2626;
+        transform: translateY(-2px);
+    }
+
+    .btn-save {
+        background: var(--primary);
+        color: var(--white);
+        padding: 10px 18px;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: background 0.3s ease, transform 0.2s ease;
+    }
+
+    .btn-save:hover {
+        background: #0284C7;
+        transform: translateY(-2px);
+    }
+
+    .pagination {
+        margin-top: 20px;
+        display: flex;
+        justify-content: center;
+        gap: 10px;
+    }
+
+    .pagination a {
+        padding: 10px 16px;
+        background: var(--white);
+        color: var(--dark-text);
+        text-decoration: none;
+        border-radius: 8px;
+        border: 1px solid var(--border);
+        transition: background 0.3s ease, color 0.3s ease, transform 0.2s ease;
+    }
+
+    .pagination a:hover {
+        background: var(--primary);
+        color: var(--white);
+        transform: translateY(-2px);
+    }
+
+    .pagination a.active {
+        background: var(--primary);
+        color: var(--white);
+        border-color: var(--primary);
+    }
+
+    .modal {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.6);
+        z-index: 1000;
+        justify-content: center;
+        align-items: center;
+        animation: fadeIn 0.3s ease;
+    }
+
+    .modal-content {
+        background: var(--white);
+        padding: 20px;
+        border-radius: 12px;
+        width: 90%;
+        max-width: 550px;
+        box-shadow: var(--shadow);
+        position: relative;
+        color: var(--dark-text);
+        animation: slideIn 0.3s ease;
+    }
+
+    @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+    }
+
+    @keyframes slideIn {
+        from { transform: translateY(-20px); opacity: 0; }
+        to { transform: translateY(0); opacity: 1; }
+    }
+
+    .modal-content h2 {
+        font-size: 20px;
+        margin-bottom: 20px;
+        color: var(--dark-text);
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .modal-content h2 i {
+        color: var(--primary);
+    }
+
+    .close {
+        position: absolute;
+        top: 12px;
+        right: 16px;
+        font-size: 24px;
+        cursor: pointer;
+        color: var(--gray);
+        transition: color 0.3s ease;
+    }
+
+    .close:hover {
+        color: var(--primary);
+    }
+
+    .form-group {
+        margin-bottom: 15px;
+    }
+
+    .form-group label {
+        display: block;
+        font-weight: 500;
+        margin-bottom: 6px;
+        color: var(--dark-text);
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .form-group label i {
+        color: var(--primary);
+    }
+
+    .form-group input, .form-group select {
+        width: 100%;
+        padding: 10px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        font-size: 14px;
+        background: var(--white);
+        color: var(--dark-text);
+        transition: border-color 0.3s ease, box-shadow 0.3s ease;
+    }
+
+    .form-group input:focus, .form-group select:focus {
+        outline: none;
+        border-color: var(--primary);
+        box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.1);
+    }
+
+    .error {
+        background: var(--error);
+        color: var(--error-text);
+        padding: 10px;
+        margin-bottom: 20px;
+        border-radius: 8px;
+        text-align: center;
+        font-size: 14px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+    }
+
+    .error i {
+        color: var(--error-text);
+    }
+
+    .success {
+        background: var(--success);
+        color: var(--success-text);
+        padding: 10px;
+        margin-bottom: 20px;
+        border-radius: 8px;
+        text-align: center;
+        font-size: 14px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+    }
+
+    .success i {
+        color: var(--success-text);
+    }
+
+    .form-group select[multiple] {
+        height: 150px;
+        width: 100%;
+        padding: 10px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: var(--white);
+        color: var(--dark-text);
+        transition: border-color 0.3s ease;
+    }
+
+    .form-group select[multiple]:focus {
+        outline: none;
+        border-color: var(--primary);
+        box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.1);
+    }
+
+    @media (max-width: 1024px) {
         .container {
-            display: flex;
-            max-width: 1300px;
-            margin: 0 auto;
-            padding: 30px;
-            min-height: 100vh;
+            flex-direction: column;
+            padding: 15px;
         }
 
         .sidebar {
-            width: 280px;
-            background: var(--white);
-            padding: 30px;
-            border-radius: 20px;
-            box-shadow: var(--shadow);
-            margin-right: 30px;
+            width: 100%;
+            position: static;
+            height: auto;
+            margin-bottom: 20px;
+        }
+    }
+
+    @media (max-width: 768px) {
+        .dashboard-grid {
+            grid-template-columns: 1fr;
         }
 
-        .profile-avatar {
-            text-align: center;
-            margin-bottom: 30px;
+        .chart-row, .bottom-row {
+            grid-template-columns: 1fr;
         }
 
-        .profile-avatar h1 {
-            font-size: 24px;
-            font-weight: 600;
-            color: var(--dark-text);
-            margin-bottom: 5px;
-        }
-
-        .profile-avatar p {
-            font-size: 14px;
-            color: var(--gray);
-        }
-
-        .stats {
-            display: flex;
-            justify-content: space-around;
-            margin-top: 15px;
-            gap: 10px;
-        }
-
-        .stat-item {
-            background: var(--light-bg);
-            padding: 12px;
-            border-radius: 10px;
-            color: var(--secondary);
-            font-size: 14px;
-            font-weight: 500;
-            transition: background 0.3s ease;
-        }
-
-        .stat-item:hover {
-            background: var(--secondary);
-            color: var(--white);
-        }
-
-        .stat-item span {
-            font-weight: bold;
-            margin-right: 5px;
-        }
-
-        .menu a {
-            display: flex;
-            align-items: center;
-            padding: 15px;
-            color: var(--dark-text);
-            text-decoration: none;
-            margin-bottom: 10px;
-            border-radius: 10px;
-            transition: background 0.3s ease, color 0.3s ease;
-            cursor: pointer;
-        }
-
-        .menu a i {
-            margin-right: 15px;
-            font-size: 18px;
-        }
-
-        .menu a:hover, .menu a.active {
-            background: var(--primary);
-            color: var(--white);
-        }
-
-        .main-content {
-            flex: 1;
-            background: rgba(255, 255, 255, 0.95);
-            padding: 30px;
-            border-radius: 20px;
-            box-shadow: var(--shadow);
-            animation: fadeIn 0.7s ease-out;
-        }
-
-        @keyframes fadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
-        }
-
-        .section {
-            background: var(--white);
-            border-radius: 15px;
-            box-shadow: var(--shadow);
-            padding: 25px;
-            margin-bottom: 30px;
-            transition: transform 0.3s ease;
-        }
-
-        .section:hover {
-            transform: translateY(-5px);
+        .header-title {
+            font-size: 22px;
         }
 
         .section-title {
-            font-size: 22px;
-            font-weight: 600;
-            margin-bottom: 20px;
-            padding-bottom: 10px;
-            border-bottom: 2px solid var(--primary);
-            display: flex;
-            align-items: center;
-            color: var(--dark-text);
-        }
-
-        .section-title i {
-            margin-right: 10px;
-            color: var(--primary);
-            font-size: 24px;
-        }
-
-        .dashboard-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 20px;
-        }
-
-        .dashboard-card {
-            background: var(--light-bg);
-            padding: 20px;
-            border-radius: 10px;
-            text-align: center;
-            transition: transform 0.3s ease, background 0.3s ease;
-        }
-
-        .dashboard-card:hover {
-            transform: translateY(-5px);
-            background: var(--secondary);
-            color: var(--white);
-        }
-
-        .dashboard-card i {
-            font-size: 30px;
-            color: var(--primary);
-            margin-bottom: 10px;
-        }
-
-        .dashboard-card h3 {
-            font-size: 14px;
-            margin-bottom: 10px;
-            color: inherit;
-        }
-
-        .dashboard-card p {
-            font-size: 24px;
-            font-weight: 700;
-            color: inherit;
-        }
-
-        .table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 20px;
+            font-size: 18px;
         }
 
         .table th, .table td {
-            padding: 12px;
-            text-align: left;
-            border-bottom: 1px solid var(--light-bg);
-        }
-
-        .table th {
-            background: var(--primary);
-            color: var(--white);
-        }
-
-        .table tr:hover {
-            background: var(--light-bg);
-        }
-
-        .table .btn {
-            padding: 5px 10px;
-            border-radius: 5px;
-            font-size: 12px;
-            cursor: pointer;
-            text-decoration: none;
-            display: inline-flex;
-            align-items: center;
-            gap: 5px;
-        }
-
-        .btn-edit {
-            background: #34D399;
-            color: var(--white);
-        }
-
-        .btn-edit:hover {
-            background: #2DD4BF;
-        }
-
-        .btn-cancel {
-            background: #EF4444;
-            color: var(--white);
-        }
-
-        .btn-cancel:hover {
-            background: #DC2626;
-        }
-
-        .no-data {
-            text-align: center;
-            color: var(--gray);
-            padding: 20px;
-        }
-
-        /* Стили для модальных окон */
-        .modal {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.5);
-            z-index: 1000;
-            justify-content: center;
-            align-items: center;
-        }
-
-        .modal-content {
-            background: var(--white);
-            padding: 20px;
-            border-radius: 15px;
-            width: 90%;
-            max-width: 600px;
-            box-shadow: var(--shadow);
-            position: relative;
-        }
-
-        .modal-content h2 {
-            font-size: 20px;
-            margin-bottom: 20px;
-            color: var(--dark-text);
-        }
-
-        .close {
-            position: absolute;
-            top: 10px;
-            right: 15px;
-            font-size: 24px;
-            cursor: pointer;
-            color: var(--gray);
-        }
-
-        .form-group {
-            margin-bottom: 15px;
-        }
-
-        .form-group label {
-            display: block;
-            font-weight: 500;
-            margin-bottom: 5px;
-        }
-
-        .form-group input, .form-group select {
-            width: 100%;
             padding: 8px;
-            border: 1px solid var(--gray);
-            border-radius: 5px;
-            font-size: 14px;
+            font-size: 13px;
         }
 
-        .form-group input:focus, .form-group select:focus {
-            outline: none;
-            border-color: var(--primary);
+        .btn {
+            padding: 6px 10px;
+            font-size: 12px;
         }
 
-        .btn-save {
-            background: var(--primary);
-            color: var(--white);
-            padding: 10px 20px;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
+        .pagination a {
+            padding: 8px 12px;
+            font-size: 12px;
         }
+    }
+    .form-group textarea {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 14px;
+    background: var(--white);
+    color: var(--dark-text);
+    transition: border-color 0.3s ease, box-shadow 0.3s ease;
+    resize: vertical;
+}
 
-        .btn-save:hover {
-            background: #0033A0;
-        }
-
-        .error, .success {
-            padding: 10px;
-            margin-bottom: 20px;
-            border-radius: 5px;
-            text-align: center;
-        }
-
-        .error {
-            background: #FEE2E2;
-            color: #B91C1C;
-        }
-
-        .success {
-            background: #D1FAE5;
-            color: #065F46;
-        }
-
-        @media (max-width: 768px) {
-            .container {
-                flex-direction: column;
-                padding: 15px;
-            }
-
-            .sidebar {
-                width: 100%;
-                margin-right: 0;
-                margin-bottom: 20px;
-            }
-
-            .dashboard-grid {
-                grid-template-columns: 1fr;
-            }
-
-            .table {
-                font-size: 14px;
-            }
-
-            .modal-content {
-                width: 95%;
-            }
-        }
+.form-group textarea:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.1);
+}
     </style>
 </head>
 <body>
     <div class="container">
         <div class="sidebar">
-            <div class="profile-avatar">
-                <h1>Привет, <?= htmlspecialchars($user['username'] ?? 'Админ') ?>!</h1>
-                <p>Администратор</p>
-                <div class="stats">
-                    <div class="stat-item"><span><?= $booking_count ?></span> Бронирования</div>
-                </div>
-            </div>
+            <div class="logo">iTravel</div>
             <nav class="menu">
-                <a href="admin.php" class="active"><i class="fas fa-tachometer-alt"></i> Обзор</a>
-                <a href="admin_users.php"><i class="fas fa-users-cog"></i> Пользователи</a>
-                <a href="admin_tours.php"><i class="fas fa-plane"></i> Туры</a>
+                <a href="#overview" class="active"><i class="fas fa-tachometer-alt"></i> Обзор</a>
+                <a href="#users"><i class="fas fa-users-cog"></i> Пользователи</a>
+                <a href="#tours"><i class="fas fa-plane"></i> Туры</a>
+                <a href="#bookings"><i class="fas fa-suitcase"></i> Бронирования</a>
+                <a href="#packages"><i class="fas fa-box-open"></i> Пакеты услуг</a>
                 <a href="profile.php"><i class="fas fa-user"></i> Профиль</a>
                 <a href="logout.php"><i class="fas fa-sign-out-alt"></i> Выйти</a>
             </nav>
         </div>
 
         <div class="main-content">
-            <h1 class="section-title"><i class="fas fa-tachometer-alt"></i> Обзор админ-панели</h1>
-            <p>Добро пожаловать, <?= htmlspecialchars($user['username'] ?? 'Админ') ?>! Сегодня <?= date('d.m.Y H:i') ?> CEST.</p>
+            <div class="header">
+                <div class="header-title">Админ-панель</div>
+                <div class="profile">
+                    <div class="profile-info">
+                        <h1><?= htmlspecialchars($user['username'] ?? 'Админ') ?></h1>
+                        <p>Администратор</p>
+                    </div>
+                    <img src="https://via.placeholder.com/40" alt="Profile">
+                </div>
+            </div>
 
             <?php if ($error): ?>
-                <div class="error"><?= htmlspecialchars($error) ?></div>
+                <div class="error"><i class="fas fa-exclamation-circle"></i> <?= htmlspecialchars($error) ?></div>
             <?php endif; ?>
             <?php if ($success): ?>
-                <div class="success"><?= htmlspecialchars($success) ?></div>
+                <div class="success"><i class="fas fa-check-circle"></i> <?= htmlspecialchars($success) ?></div>
             <?php endif; ?>
 
-            <div class="section">
-                <h2 class="section-title"><i class="fas fa-chart-pie"></i> Статистика</h2>
-                <div class="dashboard-grid">
-                    <div class="dashboard-card">
-                        <i class="fas fa-users"></i>
-                        <h3>Пользователи</h3>
-                        <p><?= $user_count ?></p>
+            <div class="section" id="overview">
+                <div class="section-title"><i class="fas fa-chart-line"></i> Статистика за сегодня</div>
+                <div class="section-content active">
+                    <div class="dashboard-grid">
+                        <div class="dashboard-card">
+                            <h3>Все бронирования</h3>
+                            <p><?= $stats['booking_count'] ?></p>
+                        </div>
+                        <div class="dashboard-card">
+                            <h3>Активные туры</h3>
+                            <p><?= $stats['tour_count'] ?></p>
+                        </div>
+                        <div class="dashboard-card">
+                            <h3>Подтвержденные</h3>
+                            <p><?= $stats['confirmed_count'] ?></p>
+                        </div>
                     </div>
-                    <div class="dashboard-card">
-                        <i class="fas fa-plane"></i>
-                        <h3>Активные туры</h3>
-                        <p><?= $tour_count ?></p>
+                    <div class="chart-row">
+                        <div class="chart-container">
+                            <div class="chart-title"><i class="fas fa-smile"></i> Удовлетворенность клиентов</div>
+                            <canvas id="satisfactionChart"></canvas>
+                        </div>
+                        <div class="chart-container">
+                            <div class="chart-title"><i class="fas fa-chart-line"></i> Динамика бронирований</div>
+                            <canvas id="salesChart"></canvas>
+                        </div>
                     </div>
-                    <div class="dashboard-card">
-                        <i class="fas fa-suitcase"></i>
-                        <h3>Все бронирования</h3>
-                        <p><?= $booking_count ?></p>
-                    </div>
-                    <div class="dashboard-card">
-                        <i class="fas fa-ticket-alt"></i>
-                        <h3>Подтвержденные</h3>
-                        <p><?= $confirmed_count ?></p>
+                    <div class="bottom-row">
+                        <div class="top-products">
+                            <div class="section-title"><i class="fas fa-star"></i> Популярные туры</div>
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>#</th>
+                                        <th>Название</th>
+                                        <th>Направление</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <?php if (empty($tours)): ?>
+                                        <tr><td colspan="3">Нет туров</td></tr>
+                                    <?php else: ?>
+                                        <?php $counter = 1; ?>
+                                        <?php foreach (array_slice($tours, 0, 4) as $tour): ?>
+                                            <tr>
+                                                <td><?= $counter++ ?></td>
+                                                <td><?= htmlspecialchars($tour['title'] ?? '') ?></td>
+                                                <td><?= htmlspecialchars($tour['destination'] ?? '') ?></td>
+                                            </tr>
+                                        <?php endforeach; ?>
+                                    <?php endif; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="service-level-container">
+                            <div class="section-title"><i class="fas fa-concierge-bell"></i> Уровень сервиса</div>
+                            <canvas id="serviceLevelChart"></canvas>
+                        </div>
                     </div>
                 </div>
             </div>
 
-            <div class="section">
-                <h2 class="section-title"><i class="fas fa-users"></i> Пользователи</h2>
-                <table class="table">
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Имя</th>
-                            <th>Email</th>
-                            <th>Роль</th>
-                            <th>Действия</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php if (empty($users)): ?>
-                            <tr><td colspan="5" class="no-data">Нет пользователей в базе данных.</td></tr>
-                        <?php else: ?>
-                            <?php foreach ($users as $user_item): ?>
-                                <?php if (!is_array($user_item)): ?>
-                                    <tr><td colspan="5" class="no-data">Ошибка: Неверный формат данных пользователя: <?= htmlspecialchars($user_item) ?></td></tr>
-                                <?php else: ?>
+            <div class="section" id="users">
+                <div class="section-title"><i class="fas fa-users"></i> Пользователи</div>
+                <div class="section-content">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Имя</th>
+                                <th>Email</th>
+                                <th>Роль</th>
+                                <th>Действия</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php if (empty($users)): ?>
+                                <tr><td colspan="5" class="no-data">Нет пользователей в базе данных.</td></tr>
+                            <?php else: ?>
+                                <?php foreach ($users as $user_item): ?>
                                     <tr>
                                         <td><?= htmlspecialchars($user_item['id'] ?? '') ?></td>
                                         <td><?= htmlspecialchars($user_item['username'] ?? '') ?></td>
@@ -637,112 +1158,239 @@ try {
                                             <button class="btn btn-edit" onclick="openUserModal(<?= $user_item['id'] ?>, '<?= htmlspecialchars($user_item['username']) ?>', '<?= htmlspecialchars($user_item['email']) ?>', '<?= htmlspecialchars($user_item['role']) ?>')"><i class="fas fa-edit"></i> Редактировать</button>
                                         </td>
                                     </tr>
-                                <?php endif; ?>
-                            <?php endforeach; ?>
-                        <?php endif; ?>
-                    </tbody>
-                </table>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
+                        </tbody>
+                    </table>
+                    <div class="pagination">
+                        <?php for ($i = 1; $i <= ceil($total_users / $items_per_page); $i++): ?>
+                            <a href="?user_page=<?= $i ?>" class="<?= $i == $user_page ? 'active' : '' ?>"><?= $i ?></a>
+                        <?php endfor; ?>
+                    </div>
+                </div>
             </div>
 
-            <div class="section">
-                <h2 class="section-title"><i class="fas fa-plane"></i> Туры</h2>
-                <table class="table">
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Название</th>
-                            <th>Направление</th>
-                            <th>Дата начала</th>
-                            <th>Дата окончания</th>
-                            <th>Статус</th>
-                            <th>Действия</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php if (empty($tours)): ?>
-                            <tr><td colspan="7" class="no-data">Нет туров в базе данных.</td></tr>
-                        <?php else: ?>
-                            <?php foreach ($tours as $tour): ?>
-                                <tr>
-                                    <td><?= htmlspecialchars($tour['id'] ?? '') ?></td>
-                                    <td><?= htmlspecialchars($tour['title'] ?? '') ?></td>
-                                    <td><?= htmlspecialchars($tour['destination'] ?? '') ?></td>
-                                    <td><?= !empty($tour['start_date']) ? date('d.m.Y', strtotime($tour['start_date'])) : '-' ?></td>
-                                    <td><?= !empty($tour['end_date']) ? date('d.m.Y', strtotime($tour['end_date'])) : '-' ?></td>
-                                    <td><?= htmlspecialchars($tour['status'] ?? '') ?></td>
-                                    <td>
-                                        <button class="btn btn-edit" onclick="openTourModal(<?= $tour['id'] ?>, '<?= htmlspecialchars($tour['title']) ?>', '<?= htmlspecialchars($tour['destination']) ?>', '<?= htmlspecialchars($tour['start_date']) ?>', '<?= htmlspecialchars($tour['end_date']) ?>', '<?= htmlspecialchars($tour['status']) ?>')"><i class="fas fa-edit"></i> Редактировать</button>
-                                    </td>
-                                </tr>
-                            <?php endforeach; ?>
-                        <?php endif; ?>
-                    </tbody>
-                </table>
+            <div class="section" id="tours">
+                <div class="section-title"><i class="fas fa-plane"></i> Туры</div>
+                <div class="section-content">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Название</th>
+                                <th>Направление</th>
+                                <th>Дата начала</th>
+                                <th>Дата окончания</th>
+                                <th>Статус</th>
+                                <th>Действия</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php if (empty($tours)): ?>
+                                <tr><td colspan="7" class="no-data">Нет туров в базе данных.</td></tr>
+                            <?php else: ?>
+                                <?php foreach ($tours as $tour): ?>
+                                    <tr>
+                                        <td><?= htmlspecialchars($tour['id'] ?? '') ?></td>
+                                        <td><?= htmlspecialchars($tour['title'] ?? '') ?></td>
+                                        <td><?= htmlspecialchars($tour['destination'] ?? '') ?></td>
+                                        <td><?= !empty($tour['start_date']) ? date('d.m.Y', strtotime($tour['start_date'])) : '-' ?></td>
+                                        <td><?= !empty($tour['end_date']) ? date('d.m.Y', strtotime($tour['end_date'])) : '-' ?></td>
+                                        <td><?= htmlspecialchars($tour['status'] ?? '') ?></td>
+                                        <td>
+                                            <button class="btn btn-edit" onclick="openTourModal(<?= $tour['id'] ?>, '<?= htmlspecialchars($tour['title']) ?>', '<?= htmlspecialchars($tour['destination']) ?>', '<?= htmlspecialchars($tour['start_date']) ?>', '<?= htmlspecialchars($tour['end_date']) ?>', '<?= htmlspecialchars($tour['status']) ?>', '<?= htmlspecialchars($tour['image'] ?? '') ?>', '<?= htmlspecialchars($tour['images'] ?? '') ?>')"><i class="fas fa-edit"></i> Редактировать</button>
+                                            <a href="?delete_tour=1&tour_id=<?= urlencode($tour['id'] ?? '') ?>" class="btn btn-delete" onclick="return confirm('Вы уверены, что хотите удалить тур?');"><i class="fas fa-trash"></i> Удалить</a>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
+                        </tbody>
+                    </table>
+                    <div class="pagination">
+                        <?php for ($i = 1; $i <= ceil($total_tours / $items_per_page); $i++): ?>
+                            <a href="?tour_page=<?= $i ?>" class="<?= $i == $tour_page ? 'active' : '' ?>"><?= $i ?></a>
+                        <?php endfor; ?>
+                    </div>
+                </div>
             </div>
 
-            <div class="section">
-                <h2 class="section-title"><i class="fas fa-suitcase"></i> Бронирования</h2>
-                <table class="table">
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Пользователь</th>
-                            <th>Телефон</th>
-                            <th>Тур</th>
-                            <th>Статус</th>
-                            <th>Дата бронирования</th>
-                            <th>Человек</th>
-                            <th>Пакет</th>
-                            <th>Цена</th>
-                            <th>Действия</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <?php if (empty($bookings)): ?>
-                            <tr><td colspan="10" class="no-data">Нет бронирований в базе данных.</td></tr>
-                        <?php else: ?>
-                            <?php foreach ($bookings as $booking): ?>
-                                <tr>
-                                    <td><?= htmlspecialchars($booking['id'] ?? '') ?></td>
-                                    <td><?= htmlspecialchars($booking['username'] ?? 'Неизвестно') ?></td>
-                                    <td><?= htmlspecialchars($booking['phone'] ?? 'Не указан') ?></td>
-                                    <td><?= htmlspecialchars($booking['title'] ?? 'Неизвестно') ?></td>
-                                    <td><?= htmlspecialchars($booking['status'] ?? '') ?></td>
-                                    <td><?= !empty($booking['created_at']) ? date('d.m.Y H:i', strtotime($booking['created_at'])) : '-' ?></td>
-                                    <td><?= htmlspecialchars($booking['persons'] ?? 0) ?></td>
-                                    <td><?= htmlspecialchars($booking['package_name'] ?? 'Без пакета') ?></td>
-                                    <td><?= number_format($booking['price'] ?? 0, 2, ',', ' ') ?> ₽</td>
-                                    <td>
-                                        <button class="btn btn-edit" onclick="openBookingModal(<?= $booking['id'] ?>, '<?= htmlspecialchars($booking['status']) ?>', <?= $booking['persons'] ?? 0 ?>, <?= $booking['package_id'] ?? 0 ?>)"><i class="fas fa-edit"></i> Редактировать</button>
-                                        <a href="?cancel=1&booking_id=<?= urlencode($booking['id'] ?? '') ?>" class="btn btn-cancel" onclick="return confirm('Вы уверены, что хотите отменить бронирование?');"><i class="fas fa-times"></i> Отменить</a>
-                                    </td>
-                                </tr>
-                            <?php endforeach; ?>
-                        <?php endif; ?>
-                    </tbody>
-                </table>
+            <div class="section" id="bookings">
+                <div class="section-title"><i class="fas fa-suitcase"></i> Бронирования</div>
+                <div class="section-content">
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Пользователь</th>
+                                <th>Телефон</th>
+                                <th>Тур</th>
+                                <th>Статус</th>
+                                <th>Дата бронирования</th>
+                                <th>Человек</th>
+                                <th>Пакет</th>
+                                <th>Цена</th>
+                                <th>Действия</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php if (empty($bookings)): ?>
+                                <tr><td colspan="10" class="no-data">Нет бронирований в базе данных.</td></tr>
+                            <?php else: ?>
+                                <?php foreach ($bookings as $booking): ?>
+                                    <tr>
+                                        <td><?= htmlspecialchars($booking['id'] ?? '') ?></td>
+                                        <td><?= htmlspecialchars($booking['username'] ?? 'Неизвестно') ?></td>
+                                        <td><?= htmlspecialchars($booking['phone'] ?? 'Не указан') ?></td>
+                                        <td><?= htmlspecialchars($booking['title'] ?? 'Неизвестно') ?></td>
+                                        <td><?= htmlspecialchars($booking['status'] ?? '') ?></td>
+                                        <td><?= !empty($booking['created_at']) ? date('d.m.Y H:i', strtotime($booking['created_at'])) : '-' ?></td>
+                                        <td><?= htmlspecialchars($booking['persons'] ?? 0) ?></td>
+                                        <td><?= htmlspecialchars($booking['package_name'] ?? 'Без пакета') ?></td>
+                                        <td><?= htmlspecialchars($booking['price'] ?? '0') ?> ₽</td>
+                                        <td>
+                                            <button class="btn btn-edit" onclick="openBookingModal(<?= $booking['id'] ?>, '<?= htmlspecialchars($booking['status']) ?>', <?= $booking['persons'] ?? 0 ?>, <?= $booking['package_id'] ?? 0 ?>)"><i class="fas fa-edit"></i> Редактировать</button>
+                                            <a href="?cancel=1&booking_id=<?= urlencode($booking['id'] ?? '') ?>" class="btn btn-cancel" onclick="return confirm('Вы уверены, что хотите отменить бронирование?');"><i class="fas fa-times"></i> Отменить</a>
+                                        </td>
+                                    </tr>
+                                <?php endforeach; ?>
+                            <?php endif; ?>
+                        </tbody>
+                    </table>
+                    <div class="pagination">
+                        <?php for ($i = 1; $i <= ceil($total_bookings / $items_per_page); $i++): ?>
+                            <a href="?booking_page=<?= $i ?>" class="<?= $i == $booking_page ? 'active' : '' ?>"><?= $i ?></a>
+                        <?php endfor; ?>
+                    </div>
+                </div>
             </div>
+
+          <!-- Секция "Пакеты услуг" -->
+<div class="section" id="packages">
+    <div class="section-title"><i class="fas fa-box-open"></i> Пакеты услуг</div>
+    <div class="section-content">
+        <div class="form-group">
+            <label for="package_name"><i class="fas fa-tag"></i> Название пакета</label>
+            <input type="text" id="package_name" name="package_name" required>
         </div>
+        <div class="form-group">
+            <label for="package_price"><i class="fas fa-money-bill"></i> Цена</label>
+            <input type="text" id="package_price" name="package_price" required>
+        </div>
+        <div class="form-group">
+            <label for="package_description"><i class="fas fa-info-circle"></i> Описание</label>
+            <textarea id="package_description" name="package_description" rows="3"></textarea>
+        </div>
+        <div class="form-group">
+            <label for="package_services"><i class="fas fa-list"></i> Услуги</label>
+            <select id="package_services" name="package_services" multiple required>
+                <?php foreach ($services as $service): ?>
+                    <option value="<?= htmlspecialchars($service['id']) ?>"><?= htmlspecialchars($service['name']) ?></option>
+                <?php endforeach; ?>
+            </select>
+        </div>
+        <div class="form-group">
+            <button type="button" class="btn btn-save" onclick="savePackage()"><i class="fas fa-save"></i> Создать пакет</button>
+        </div>
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Название</th>
+                    <th>Цена</th>
+                    <th>Описание</th>
+                    <th>Услуги</th>
+                    <th>Действия</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php if (empty($packages_with_services)): ?>
+                    <tr><td colspan="6" class="no-data">Нет пакетов в базе данных.</td></tr>
+                <?php else: ?>
+                    <?php foreach ($packages_with_services as $package): ?>
+                        <tr>
+                            <td><?= htmlspecialchars($package['id'] ?? '') ?></td>
+                            <td><?= htmlspecialchars($package['name'] ?? '') ?></td>
+                            <td><?= htmlspecialchars($package['price'] ?? '') ?></td>
+                            <td><?= htmlspecialchars($package['description'] ?? '') ?></td>
+                            <td><?= htmlspecialchars($package['service_names'] ?? 'Нет услуг') ?></td>
+                            <td>
+                                <button class="btn btn-edit" onclick="editPackage(<?= $package['id'] ?>, '<?= htmlspecialchars($package['name']) ?>', '<?= htmlspecialchars($package['price']) ?>', '<?= htmlspecialchars($package['description']) ?>')"><i class="fas fa-edit"></i> Редактировать</button>
+                                <button class="btn btn-delete" onclick="deletePackage(<?= $package['id'] ?>)"><i class="fas fa-trash"></i> Удалить</button>
+                            </td>
+                        </tr>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+            </tbody>
+        </table>
     </div>
+</div>
 
-    <!-- Модальное окно для редактирования пользователя -->
+<!-- Секция "Услуги" -->
+<div class="section" id="services">
+    <div class="section-title"><i class="fas fa-concierge-bell"></i> Услуги</div>
+    <div class="section-content">
+        <div class="form-group">
+            <label for="service_name"><i class="fas fa-tag"></i> Название услуги</label>
+            <input type="text" id="service_name" name="service_name" required>
+        </div>
+        <div class="form-group">
+            <label for="service_description"><i class="fas fa-info-circle"></i> Описание</label>
+            <textarea id="service_description" name="service_description" rows="3"></textarea>
+        </div>
+        <div class="form-group">
+            <button type="button" class="btn btn-save" onclick="saveService()"><i class="fas fa-save"></i> Создать услугу</button>
+        </div>
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Название</th>
+                    <th>Описание</th>
+                    <th>Действия</th>
+                </tr>
+            </thead>
+            <tbody>
+                <?php if (empty($services)): ?>
+                    <tr><td colspan="4" class="no-data">Нет услуг в базе данных.</td></tr>
+                <?php else: ?>
+                    <?php foreach ($services as $service): ?>
+                        <tr>
+                            <td><?= htmlspecialchars($service['id'] ?? '') ?></td>
+                            <td><?= htmlspecialchars($service['name'] ?? '') ?></td>
+                            <td><?= htmlspecialchars($service['description'] ?? '') ?></td>
+                            <td>
+    <button class="btn btn-edit" 
+            data-id="<?= htmlspecialchars($service['id'] ?? '') ?>" 
+            data-name="<?= htmlspecialchars($service['name'] ?? '') ?>" 
+            data-description="<?= htmlspecialchars($service['description'] ?? '') ?>" 
+            onclick="editService(this)"><i class="fas fa-edit"></i> Редактировать</button>
+    <button class="btn btn-delete" onclick="deleteService(<?= $service['id'] ?>)"><i class="fas fa-trash"></i> Удалить</button>
+</td>
+                        </tr>
+                    <?php endforeach; ?>
+                <?php endif; ?>
+            </tbody>
+        </table>
+    </div>
+</div>
+
     <div id="userModal" class="modal">
         <div class="modal-content">
             <span class="close" onclick="closeModal('userModal')">×</span>
-            <h2>Редактировать пользователя</h2>
+            <h2><i class="fas fa-user-edit"></i> Редактировать пользователя</h2>
             <form method="POST">
                 <input type="hidden" name="edit_user" value="1">
                 <input type="hidden" id="user_id" name="user_id">
                 <div class="form-group">
-                    <label for="user_username">Имя пользователя</label>
+                    <label for="user_username"><i class="fas fa-user"></i> Имя пользователя</label>
                     <input type="text" id="user_username" name="username" required>
                 </div>
                 <div class="form-group">
-                    <label for="user_email">Email</label>
+                    <label for="user_email"><i class="fas fa-envelope"></i> Email</label>
                     <input type="email" id="user_email" name="email" required>
                 </div>
                 <div class="form-group">
-                    <label for="user_role">Роль</label>
+                    <label for="user_role"><i class="fas fa-shield-alt"></i> Роль</label>
                     <select id="user_role" name="role" required>
                         <option value="admin">Администратор</option>
                         <option value="user">Пользователь</option>
@@ -755,36 +1403,43 @@ try {
         </div>
     </div>
 
-    <!-- Модальное окно для редактирования тура -->
     <div id="tourModal" class="modal">
         <div class="modal-content">
             <span class="close" onclick="closeModal('tourModal')">×</span>
-            <h2>Редактировать тур</h2>
+            <h2><i class="fas fa-plane"></i> Редактировать тур</h2>
             <form method="POST">
                 <input type="hidden" name="edit_tour" value="1">
                 <input type="hidden" id="tour_id" name="tour_id">
                 <div class="form-group">
-                    <label for="tour_title">Название</label>
+                    <label for="tour_title"><i class="fas fa-tag"></i> Название</label>
                     <input type="text" id="tour_title" name="title" required>
                 </div>
                 <div class="form-group">
-                    <label for="tour_destination">Направление</label>
+                    <label for="tour_destination"><i class="fas fa-map-marker-alt"></i> Направление</label>
                     <input type="text" id="tour_destination" name="destination" required>
                 </div>
                 <div class="form-group">
-                    <label for="tour_start_date">Дата начала</label>
+                    <label for="tour_start_date"><i class="fas fa-calendar-alt"></i> Дата начала</label>
                     <input type="date" id="tour_start_date" name="start_date" required>
                 </div>
                 <div class="form-group">
-                    <label for="tour_end_date">Дата окончания</label>
+                    <label for="tour_end_date"><i class="fas fa-calendar-alt"></i> Дата окончания</label>
                     <input type="date" id="tour_end_date" name="end_date" required>
                 </div>
                 <div class="form-group">
-                    <label for="tour_status">Статус</label>
+                    <label for="tour_status"><i class="fas fa-toggle-on"></i> Статус</label>
                     <select id="tour_status" name="status" required>
                         <option value="active">Активен</option>
                         <option value="inactive">Неактивен</option>
                     </select>
+                </div>
+                <div class="form-group">
+                    <label for="tour_image"><i class="fas fa-image"></i> URL основного фото</label>
+                    <input type="url" id="tour_image" name="image">
+                </div>
+                <div class="form-group">
+                    <label for="tour_images"><i class="fas fa-images"></i> URL дополнительных фото (через запятую)</label>
+                    <input type="text" id="tour_images" name="images">
                 </div>
                 <div class="form-group">
                     <button type="submit" class="btn btn-save"><i class="fas fa-save"></i> Сохранить</button>
@@ -793,16 +1448,15 @@ try {
         </div>
     </div>
 
-    <!-- Модальное окно для редактирования бронирования -->
     <div id="bookingModal" class="modal">
         <div class="modal-content">
             <span class="close" onclick="closeModal('bookingModal')">×</span>
-            <h2>Редактировать бронирование</h2>
+            <h2><i class="fas fa-suitcase"></i> Редактировать бронирование</h2>
             <form method="POST">
                 <input type="hidden" name="edit_booking" value="1">
                 <input type="hidden" id="booking_id" name="booking_id">
                 <div class="form-group">
-                    <label for="booking_status">Статус</label>
+                    <label for="booking_status"><i class="fas fa-toggle-on"></i> Статус</label>
                     <select id="booking_status" name="status" required>
                         <option value="pending">Ожидает</option>
                         <option value="confirmed">Подтверждено</option>
@@ -810,11 +1464,11 @@ try {
                     </select>
                 </div>
                 <div class="form-group">
-                    <label for="booking_persons">Количество человек</label>
+                    <label for="booking_persons"><i class="fas fa-users"></i> Количество человек</label>
                     <input type="number" id="booking_persons" name="persons" min="1" required>
                 </div>
                 <div class="form-group">
-                    <label for="booking_package_id">Пакет</label>
+                    <label for="booking_package_id"><i class="fas fa-box"></i> Пакет</label>
                     <select id="booking_package_id" name="package_id" required>
                         <?php foreach ($packages as $package): ?>
                             <option value="<?= $package['id'] ?>"><?= htmlspecialchars($package['name']) ?></option>
@@ -828,46 +1482,434 @@ try {
         </div>
     </div>
 
+    <div id="packageModal" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="closeModal('packageModal')">×</span>
+        <h2><i class="fas fa-box-open"></i> Редактировать пакет</h2>
+        <form id="editPackageForm">
+            <input type="hidden" id="edit_package_id">
+            <div class="form-group">
+                <label for="edit_package_name"><i class="fas fa-tag"></i> Название</label>
+                <input type="text" id="edit_package_name" name="name" required>
+            </div>
+            <div class="form-group">
+                <label for="edit_package_price"><i class="fas fa-money-bill"></i> Цена</label>
+                <input type="text" id="edit_package_price" name="price" required>
+            </div>
+            <div class="form-group">
+                <label for="edit_package_description"><i class="fas fa-info-circle"></i> Описание</label>
+                <textarea id="edit_package_description" name="description" rows="3"></textarea>
+            </div>
+            <div class="form-group">
+                <label for="edit_package_services"><i class="fas fa-list"></i> Услуги</label>
+                <select id="edit_package_services" name="services" multiple required>
+                    <?php foreach ($services as $service): ?>
+                        <option value="<?= htmlspecialchars($service['id']) ?>"><?= htmlspecialchars($service['name']) ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div class="form-group">
+                <button type="button" class="btn btn-save" onclick="updatePackage()"><i class="fas fa-save"></i> Сохранить</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div id="serviceModal" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="closeModal('serviceModal')">×</span>
+        <h2><i class="fas fa-concierge-bell"></i> Редактировать услугу</h2>
+        <form id="editServiceForm">
+            <input type="hidden" id="edit_service_id">
+            <div class="form-group">
+                <label for="edit_service_name"><i class="fas fa-tag"></i> Название</label>
+                <input type="text" id="edit_service_name" name="name" required>
+            </div>
+            <div class="form-group">
+                <label for="edit_service_description"><i class="fas fa-info-circle"></i> Описание</label>
+                <textarea id="edit_service_description" name="description" rows="3"></textarea>
+            </div>
+            <div class="form-group">
+                <button type="button" class="btn btn-save" onclick="updateService()"><i class="fas fa-save"></i> Сохранить</button>
+            </div>
+        </form>
+    </div>
+</div>
+
     <script>
-        function openUserModal(id, username, email, role) {
-            document.getElementById('user_id').value = id;
-            document.getElementById('user_username').value = username;
-            document-ship.$email;
-            document.getElementById('user_role').value = role;
-            document.getElementById('userModal').style.display = 'flex';
-        }
+    Chart.register(ChartDataLabels);
 
-        function openTourModal(id, title, destination, start_date, end_date, status) {
-            document.getElementById('tour_id').value = id;
-            document.getElementById('tour_title').value = title;
-            document.getElementById('tour_destination').value = destination;
-            document.getElementById('tour_start_date').value = start_date;
-            document.getElementById('tour_end_date').value = end_date;
-            document.getElementById('tour_status').value = status;
-            document.getElementById('tourModal').style.display = 'flex';
+    const salesCtx = document.getElementById('salesChart').getContext('2d');
+    new Chart(salesCtx, {
+        type: 'line',
+        data: {
+            labels: ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'],
+            datasets: [{
+                label: 'Бронирования',
+                data: [200, 180, 220, 300, 280, 350, 400, 380, 420, 390, 410, 450],
+                borderColor: '#0EA5E9',
+                backgroundColor: 'rgba(56, 189, 248, 0.2)',
+                fill: true,
+                tension: 0.4,
+                pointBackgroundColor: '#0EA5E9',
+                pointBorderColor: '#1E3A8A',
+                pointHoverBackgroundColor: '#0284C7',
+                pointHoverBorderColor: '#1E3A8A',
+                pointRadius: 5,
+                pointHoverRadius: 8
+            }]
+        },
+        options: {
+            responsive: true,
+            animation: {
+                duration: 1500,
+                easing: 'easeInOutQuart'
+            },
+            scales: {
+                x: { grid: { display: false }, ticks: { color: '#1E293B', font: { size: 12 } } },
+                y: { beginAtZero: true, grid: { color: 'rgba(0, 0, 0, 0.05)' }, ticks: { color: '#1E293B', font: { size: 12 } } }
+            },
+            plugins: {
+                legend: { display: false },
+                datalabels: { display: true, color: '#1E293B', font: { size: 12, weight: 'bold' }, formatter: value => value, anchor: 'end', align: 'top' }
+            },
+            interaction: { mode: 'index', intersect: false },
+            hover: { animationDuration: 300 }
         }
+    });
 
-        function openBookingModal(id, status, persons, package_id) {
-            document.getElementById('booking_id').value = id;
-            document.getElementById('booking_status').value = status;
-            document.getElementById('booking_persons').value = persons;
-            document.getElementById('booking_package_id').value = package_id;
-            document.getElementById('bookingModal').style.display = 'flex';
-        }
-
-        function closeModal(modalId) {
-            document.getElementById(modalId).style.display = 'none';
-        }
-
-        // Закрытие модального окна при клике вне формы
-        window.onclick = function(event) {
-            const modals = document.getElementsByClassName('modal');
-            for (let modal of modals) {
-                if (event.target === modal) {
-                    modal.style.display = 'none';
+    const satisfactionCtx = document.getElementById('satisfactionChart').getContext('2d');
+    new Chart(satisfactionCtx, {
+        type: 'bar',
+        data: {
+            labels: ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн'],
+            datasets: [
+                { 
+                    label: 'Удовлетворены', 
+                    data: [80, 85, 90, 75, 88, 92], 
+                    backgroundColor: '#0EA5E9', 
+                    hoverBackgroundColor: '#0284C7',
+                    borderRadius: 6 
+                },
+                { 
+                    label: 'Не удовлетворены', 
+                    data: [20, 15, 10, 25, 12, 8], 
+                    backgroundColor: '#38BDF8', 
+                    hoverBackgroundColor: '#0EA5E9',
+                    borderRadius: 6 
                 }
+            ]
+        },
+        options: {
+            responsive: true,
+            animation: {
+                duration: 1500,
+                easing: 'easeInOutQuart'
+            },
+            scales: {
+                x: { stacked: true, grid: { display: false }, ticks: { color: '#1E293B', font: { size: 12 } } },
+                y: { stacked: true, beginAtZero: true, max: 100, grid: { color: 'rgba(0, 0, 0, 0.05)' }, ticks: { color: '#1E293B', font: { size: 12 }, callback: value => value + '%' } }
+            },
+            plugins: {
+                legend: { labels: { color: '#1E293B', font: { size: 12 } } },
+                datalabels: { color: '#1E293B', font: { size: 12, weight: 'bold' }, formatter: value => value + '%', anchor: 'end', align: 'top', offset: 10 }
+            },
+            interaction: { mode: 'index', intersect: false },
+            hover: { animationDuration: 300 }
+        }
+    });
+
+    const serviceLevelCtx = document.getElementById('serviceLevelChart').getContext('2d');
+    new Chart(serviceLevelCtx, {
+        type: 'doughnut',
+        data: {
+            labels: ['Объем', 'Сервис'],
+            datasets: [{ data: [65, 35], backgroundColor: ['#0EA5E9', '#38BDF8'], hoverBackgroundColor: ['#0284C7', '#0EA5E9'], borderWidth: 0, borderRadius: 8 }]
+        },
+        options: {
+            responsive: true,
+            animation: {
+                duration: 1500,
+                easing: 'easeInOutQuart'
+            },
+            plugins: {
+                legend: { position: 'bottom', labels: { color: '#1E293B', font: { size: 12 } } },
+                datalabels: { color: '#1E293B', font: { size: 12, weight: 'bold' }, formatter: (value, context) => { const total = context.dataset.data.reduce((a, b) => a + b, 0); return ((value / total) * 100).toFixed(1) + '%'; } }
+            },
+            interaction: { mode: 'index', intersect: false },
+            hover: { animationDuration: 300 }
+        }
+    });
+
+    document.querySelectorAll('.menu a').forEach(anchor => {
+        anchor.addEventListener('click', function(e) {
+            e.preventDefault();
+            const targetId = this.getAttribute('href').substring(1);
+            document.getElementById(targetId).scrollIntoView({ behavior: 'smooth' });
+        });
+    });
+
+    function openUserModal(id, username, email, role) {
+        document.getElementById('user_id').value = id;
+        document.getElementById('user_username').value = username;
+        document.getElementById('user_email').value = email;
+        document.getElementById('user_role').value = role;
+        document.getElementById('userModal').style.display = 'flex';
+    }
+
+    function openTourModal(id, title, destination, start_date, end_date, status, image, images) {
+        document.getElementById('tour_id').value = id;
+        document.getElementById('tour_title').value = title;
+        document.getElementById('tour_destination').value = destination;
+        document.getElementById('tour_start_date').value = start_date;
+        document.getElementById('tour_end_date').value = end_date;
+        document.getElementById('tour_status').value = status;
+        document.getElementById('tour_image').value = image;
+        document.getElementById('tour_images').value = images;
+        document.getElementById('tourModal').style.display = 'flex';
+    }
+
+    function openBookingModal(id, status, persons, package_id) {
+        document.getElementById('booking_id').value = id;
+        document.getElementById('booking_status').value = status;
+        document.getElementById('booking_persons').value = persons;
+        document.getElementById('booking_package_id').value = package_id;
+        document.getElementById('bookingModal').style.display = 'flex';
+    }
+
+    function closeModal(modalId) {
+        document.getElementById(modalId).style.display = 'none';
+    }
+
+    window.onclick = function(event) {
+        const modals = document.getElementsByClassName('modal');
+        for (let modal of modals) {
+            if (event.target === modal) {
+                modal.style.display = 'none';
             }
         }
+    }
+
+    document.querySelectorAll('.section-title').forEach(title => {
+        title.addEventListener('click', function() {
+            const content = this.nextElementSibling;
+            content.classList.toggle('active');
+        });
+    });
+
+  function savePackage() {
+    const name = document.getElementById('package_name').value;
+    const price = document.getElementById('package_price').value;
+    const description = document.getElementById('package_description').value;
+    const services = Array.from(document.getElementById('package_services').selectedOptions).map(option => option.value);
+
+    if (!name || !price || services.length === 0) {
+        alert('Заполните все поля и выберите хотя бы одну услугу.');
+        return;
+    }
+
+    fetch('admin.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'save_package', name, price, description, services }),
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('Пакет успешно создан!');
+            location.reload();
+        } else {
+            alert('Ошибка: ' + data.message);
+        }
+    })
+    .catch(error => {
+        alert('Произошла ошибка при сохранении.');
+        console.error('Error:', error);
+    });
+}
+
+function editPackage(button) {
+    const id = button.getAttribute('data-id');
+    const name = button.getAttribute('data-name');
+    const price = button.getAttribute('data-price');
+    const description = button.getAttribute('data-description');
+
+    document.getElementById('edit_package_id').value = id;
+    document.getElementById('edit_package_name').value = name;
+    document.getElementById('edit_package_price').value = price;
+    document.getElementById('edit_package_description').value = description;
+
+    fetch('admin.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'get_package_services', id: id }),
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            const select = document.getElementById('edit_package_services');
+            Array.from(select.options).forEach(option => {
+                option.selected = data.services.includes(parseInt(option.value));
+            });
+            document.getElementById('packageModal').style.display = 'flex';
+        } else {
+            alert('Ошибка загрузки услуг пакета: ' + data.message);
+        }
+    })
+    .catch(error => {
+        alert('Произошла ошибка при загрузке услуг пакета.');
+        console.error('Error:', error);
+    });
+}
+
+function updatePackage() {
+    const id = document.getElementById('edit_package_id').value;
+    const name = document.getElementById('edit_package_name').value;
+    const price = document.getElementById('edit_package_price').value;
+    const description = document.getElementById('edit_package_description').value;
+    const services = Array.from(document.getElementById('edit_package_services').selectedOptions).map(option => option.value);
+
+    if (!name || !price || services.length === 0) {
+        alert('Заполните все поля и выберите хотя бы одну услугу.');
+        return;
+    }
+
+    fetch('admin.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'update_package', id, name, price, description, services }),
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('Пакет успешно обновлен!');
+            location.reload();
+        } else {
+            alert('Ошибка: ' + data.message);
+        }
+    })
+    .catch(error => {
+        alert('Произошла ошибка при обновлении.');
+        console.error('Error:', error);
+    });
+}
+
+function deletePackage(id) {
+    if (!confirm('Вы уверены, что хотите удалить этот пакет?')) return;
+
+    fetch('admin.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'delete_package', id: id }),
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('Пакет успешно удален!');
+            location.reload();
+        } else {
+            alert('Ошибка: ' + data.message);
+        }
+    })
+    .catch(error => {
+        alert('Произошла ошибка при удалении.');
+        console.error('Error:', error);
+    });
+}
+
+function saveService() {
+    const name = document.getElementById('service_name').value;
+    const description = document.getElementById('service_description').value;
+
+    if (!name) {
+        alert('Заполните название услуги.');
+        return;
+    }
+
+    fetch('admin.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'save_service', name, description }),
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('Услуга успешно создана!');
+            location.reload();
+        } else {
+            alert('Ошибка: ' + data.message);
+        }
+    })
+    .catch(error => {
+        alert('Произошла ошибка при сохранении.');
+        console.error('Error:', error);
+    });
+}
+
+function editService(button) {
+    const id = button.getAttribute('data-id');
+    const name = button.getAttribute('data-name');
+    const description = button.getAttribute('data-description');
+
+    document.getElementById('edit_service_id').value = id;
+    document.getElementById('edit_service_name').value = name;
+    document.getElementById('edit_service_description').value = description;
+    document.getElementById('serviceModal').style.display = 'flex';
+}
+
+function updateService() {
+    const id = document.getElementById('edit_service_id').value;
+    const name = document.getElementById('edit_service_name').value;
+    const description = document.getElementById('edit_service_description').value;
+
+    if (!name) {
+        alert('Заполните название услуги.');
+        return;
+    }
+
+    fetch('admin.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'update_service', id, name, description }),
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('Услуга успешно обновлена!');
+            location.reload();
+        } else {
+            alert('Ошибка: ' + data.message);
+        }
+    })
+    .catch(error => {
+        alert('Произошла ошибка при обновлении.');
+        console.error('Error:', error);
+    });
+}
+
+function deleteService(id) {
+    if (!confirm('Вы уверены, что хотите удалить эту услугу?')) return;
+
+    fetch('admin.php', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'delete_service', id: id }),
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('Услуга успешно удалена!');
+            location.reload();
+        } else {
+            alert('Ошибка: ' + data.message);
+        }
+    })
+    .catch(error => {
+        alert('Произошла ошибка при удалении.');
+        console.error('Error:', error);
+    });
+}
     </script>
 </body>
 </html>
+

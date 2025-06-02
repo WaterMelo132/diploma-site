@@ -196,6 +196,11 @@ $user = $stmt->get_result()->fetch_assoc() ?: ['username' => 'Не указан�
 $user['created_at'] = $registration_date;
 $_SESSION['registration_date'] = $registration_date;
 $stmt->close();
+
+$stmt = $conn->prepare("SELECT id, title, destination, image AS image_url FROM travels WHERE status = 'active' ORDER BY RAND() LIMIT 3");
+$stmt->execute();
+$recommended_tours = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+$stmt->close();
 ?>
 
 <!DOCTYPE html>
@@ -682,7 +687,7 @@ $stmt->close();
         .ticket-container {
             position: relative;
             width: 90%;
-            max-width: 950px;
+            max-width: 1150px;
             animation: slideUp 0.4s ease-out;
         }
 
@@ -858,12 +863,13 @@ $stmt->close();
         }
 
         .ticket-side .qr-code {
-            width: 100px;
-            height: 100px;
-            background: var(--white);
-            padding: 5px;
-            border-radius: 5px;
-        }
+    width: 100px;
+    height: 100px;
+    background: var(--white);
+    padding: 5px;
+    border-radius: 5px;
+    transform: translateY(-20px); /* Поднимаем QR-код на 20px вверх */
+}
 
         .ticket-side .qr-code img {
             width: 100%;
@@ -1150,11 +1156,14 @@ $stmt->close();
                 margin-top: 0;
             }
 
-            .ticket-side .qr-code {
-                width: 80px;
-                height: 80px;
-            }
-
+           .ticket-side .qr-code {
+    width: 100px;
+    height: 100px;
+    background: var(--white);
+    padding: 5px;
+    border-radius: 5px;
+    margin-top: -20px; /* Поднимаем QR-код на 20px вверх */
+}
             .ticket-info {
                 grid-template-columns: 1fr;
             }
@@ -1425,25 +1434,18 @@ $stmt->close();
     <div class="section">
         <h2 class="section-title"><i class="fas fa-star"></i> Рекомендованные туры</h2>
         <div class="recommendations-grid">
-            <div class="recommendation-card">
-                <img src="https://images.unsplash.com/photo-1495567720989-cebdb147afc5?ixlib=rb-4.0.3&auto=format&fit=crop&w=500&q=60" alt="Тур">
-                <h3>Пляжный отдых в Турции</h3>
-                <p>Насладитесь солнцем и морем на лучших пляжах Антальи!</p>
-                <a href="tours.php" class="btn btn-primary"><i class="fas fa-search"></i> Подробнее</a>
-            </div>
-            <div class="recommendation-card">
-                <img src="https://images.unsplash.com/photo-1507525428034-b723cf961d3e?ixlib=rb-4.0.3&auto=format&fit=crop&w=500&q=60" alt="Тур">
-                <h3>Горнолыжный курорт в Альпах</h3>
-                <p>Испытайте адреналин на склонах Швейцарии!</p>
-                <a href="tours.php" class="btn btn-primary"><i class="fas fa-search"></i> Подробнее</a>
-            </div>
-            <div class="recommendation-card">
-                <img src="https://images.unsplash.com/photo-1530785602389-07594b6c3df9?ixlib=rb-4.0.3&auto=format&fit=crop&w=500&q=60" alt="Тур">
-                <h3>Культурный тур по Италии</h3>
-                <p>Исследуйте искусство и историю Рима и Флоренции!</p>
-                <a href="tours.php" class="btn btn-primary"><i class="fas fa-search"></i> Подробнее</a>
-            </div>
+    <?php foreach ($recommended_tours as $tour): ?>
+        <div class="recommendation-card">
+            <img src="<?= htmlspecialchars($tour['image_url'] ?? 'https://via.placeholder.com/150') ?>" alt="<?= htmlspecialchars($tour['title']) ?>">
+            <h3><?= htmlspecialchars($tour['title']) ?></h3>
+            <p><?= htmlspecialchars($tour['destination']) ?></p>
+            <a href="tours.php?id=<?= $tour['id'] ?>" class="btn btn-primary"><i class="fas fa-search"></i> Подробнее</a>
         </div>
+    <?php endforeach; ?>
+    <?php if (empty($recommended_tours)): ?>
+        <p>Нет доступных туров для рекомендации.</p>
+    <?php endif; ?>
+</div>
     </div>
 
     <div class="section">
@@ -1716,143 +1718,209 @@ $stmt->close();
             }
         }
 
-        function openTicket(booking) {
+       // ... другой JavaScript-код ...
+     function openTicket(booking) {
+         try {
+             console.log("Booking data:", booking);
+             const modal = document.getElementById('ticketModal');
+             const ticket = document.getElementById('ticketContent');
+             
+             if (!booking || !booking.id || !booking.title) {
+                 throw new Error("Недостаточно данных для бронирования: id=" + (booking?.id ?? 'missing') + ", title=" + (booking?.title ?? 'missing'));
+             }
+
+             ticket.innerHTML = `
+                 <button class="ticket-close" onclick="closeTicket()">×</button>
+                 <div class="ticket-main">
+                     <div style="text-align: center; margin-bottom: 20px;">
+                         <img src="${booking.image_url || 'https://via.placeholder.com/100'}" alt="Тур" style="width: 100px; height: auto; border-radius: 10px; object-fit: cover;">
+                     </div>
+                     <div class="ticket-header">
+                         <div class="logo">
+                             <i class="fas fa-plane"></i> iTravel
+                         </div>
+                         <div class="ticket-id">
+                             Билет #${booking.id}
+                         </div>
+                     </div>
+                     <div class="ticket-info">
+                         <div class="ticket-info-item">
+                             <i class="fas fa-user"></i>
+                             <div>
+                                 <h3>Клиент</h3>
+                                 <p>${booking.username}</p>
+                             </div>
+                         </div>
+                         <div class="ticket-info-item">
+                             <i class="fas fa-map-marker-alt"></i>
+                             <div>
+                                 <h3>Направление</h3>
+                                 <p>${booking.destination}</p>
+                             </div>
+                         </div>
+                         <div class="ticket-info-item">
+                             <i class="far fa-calendar-alt"></i>
+                             <div>
+                                 <h3>Даты поездки</h3>
+                                 <p>${new Date(booking.start_date).toLocaleDateString('ru-RU')} - ${new Date(booking.end_date).toLocaleDateString('ru-RU')}</p>
+                             </div>
+                         </div>
+                         <div class="ticket-info-item">
+                             <i class="fas fa-box"></i>
+                             <div>
+                                 <h3>Пакет</h3>
+                                 <p>${booking.package_name || 'Без пакета'}</p>
+                             </div>
+                         </div>
+                         <div class="ticket-info-item">
+                             <i class="fas fa-users"></i>
+                             <div>
+                                 <h3>Количество человек</h3>
+                                 <p>${booking.persons}</p>
+                             </div>
+                         </div>
+                         <div class="ticket-info-item">
+                             <i class="fas fa-check-circle"></i>
+                             <div>
+                                 <h3>Статус</h3>
+                                 <p>${booking.booking_status === 'pending' ? 'В обработке' : 
+                                     (booking.booking_status === 'confirmed' ? 'Подтверждено' : 'Отменено')}</p>
+                             </div>
+                         </div>
+                         <div class="ticket-info-item">
+                             <i class="fas fa-ruble-sign"></i>
+                             <div>
+                                 <h3>Стоимость</h3>
+                                 <p>${new Intl.NumberFormat('ru-RU').format(booking.total_price)} ₽</p>
+                             </div>
+                         </div>
+                     </div>
+                     <div class="ticket-footer">
+                         <div class="contact-info">
+                             <p><i class="fas fa-envelope"></i> support@example.com</p>
+                             <p><i class="fas fa-phone"></i> +7 (495) 123-4567</p>
+                             <p style="font-size: 12px; color: #555; margin-top: 10px;">
+                                 Данный документ не является предметом передачи или продажи. Он предназначен исключительно для подтверждения права доступа к поездке. Оригинальный проездной документ будет выдан организатором на месте проведения тура.
+                             </p>
+                         </div>
+                         <button class="download-btn" onclick="downloadTicket()">
+                             <i class="fas fa-download"></i> Скачать билет
+                         </button>
+                     </div>
+                 </div>
+                 <div class="ticket-side">
+                     <div class="qr-code">
+                         <img src="https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(`Бронирование #${booking.id}\nТур: ${booking.title}\nКлиент: ${booking.username}\nДаты: ${booking.start_date} - ${booking.end_date}\nСтатус: ${booking.booking_status === 'pending' ? 'В обработке' : (booking.booking_status === 'confirmed' ? 'Подтверждено' : 'Отменено')}\nСтоимость: ${new Intl.NumberFormat('ru-RU').format(booking.total_price)} ₽\nДата выдачи: ${new Date().toLocaleString('ru-RU')}`)}" alt="QR code" crossOrigin="anonymous">
+                     </div>
+                     <div class="barcode">
+                         <svg id="barcode-${booking.id}"></svg>
+                     </div>
+                     <div class="issue-date">
+                         Выдан: ${new Date().toLocaleString('ru-RU')}
+                     </div>
+                 </div>
+             `;
+             
+             JsBarcode(`#barcode-${booking.id}`, String(booking.id).padStart(10, '0'), {
+                 format: "CODE128",
+                 width: 2,
+                 height: 40,
+                 displayValue: false,
+                 background: "transparent",
+                 lineColor: "#ffffff"
+             });
+
+             modal.style.display = 'flex';
+             document.body.style.overflow = 'hidden';
+         } catch (error) {
+             console.error("Ошибка при открытии билета:", error.message);
+             alert("Ошибка при открытии билета. Проверьте консоль для подробностей.");
+         }
+     }
+
+   function downloadTicket() {
     try {
-        console.log("Booking data:", booking);
-        const modal = document.getElementById('ticketModal');
-        const ticket = document.getElementById('ticketContent');
-        
-        if (!booking || !booking.id || !booking.title) {
-            throw new Error("Недостаточно данных для бронирования: id=" + (booking?.id ?? 'missing') + ", title=" + (booking?.title ?? 'missing'));
+        const ticketContent = document.getElementById('ticketContent');
+        if (!ticketContent) throw new Error("Контейнер билета не найден");
+
+        const downloadBtn = ticketContent.querySelector('.download-btn');
+        if (downloadBtn) downloadBtn.style.display = 'none';
+
+        const images = ticketContent.getElementsByTagName('img');
+        let loadedImages = 0;
+        const totalImages = images.length;
+
+        function renderTicket() {
+            html2canvas(ticketContent, { scale: 2, useCORS: true, allowTaint: false, logging: true })
+                .then(canvas => {
+                    const link = document.createElement('a');
+                    link.download = `itravel-ticket-${new Date().toLocaleDateString('ru-RU')}.png`;
+                    const dataUrl = canvas.toDataURL('image/png');
+                    if (!dataUrl || dataUrl === 'data:,') throw new Error('Не удалось создать изображение билета');
+                    link.href = dataUrl;
+                    link.click();
+                    if (downloadBtn) downloadBtn.style.display = 'flex';
+                })
+                .catch(error => {
+                    console.error("Ошибка при рендеринге билета:", error);
+                    if (downloadBtn) downloadBtn.style.display = 'flex';
+                    alert("Не удалось скачать билет.");
+                });
         }
 
-        ticket.innerHTML = `
-            <button class="ticket-close" onclick="closeTicket()">×</button>
-            <div class="ticket-main">
-                <div style="text-align: center; margin-bottom: 20px;">
-                    <img src="${booking.image_url || 'https://via.placeholder.com/100'}" alt="Тур" style="width: 100px; height: auto; border-radius: 10px; object-fit: cover;">
-                </div>
-                <div class="ticket-header">
-                    <div class="logo">
-                        <i class="fas fa-plane"></i> iTravel
-                    </div>
-                    <div class="ticket-id">
-                        Билет #${booking.id}
-                    </div>
-                </div>
-                <div class="ticket-info">
-                <div class="ticket-info-item">
-            <i class="fas fa-user"></i>
-            <div>
-                <h3>Клиент</h3>
-                <p>${booking.username}</p>
-            </div>
-        </div>
-                    <div class="ticket-info-item">
-                        <i class="fas fa-map-marker-alt"></i>
-                        <div>
-                            <h3>Направление</h3>
-                            <p>${booking.destination}</p>
-                        </div>
-                    </div>
-                    <div class="ticket-info-item">
-                        <i class="far fa-calendar-alt"></i>
-                        <div>
-                            <h3>Даты поездки</h3>
-                            <p>${new Date(booking.start_date).toLocaleDateString('ru-RU')} - ${new Date(booking.end_date).toLocaleDateString('ru-RU')}</p>
-                        </div>
-                    </div>
-                    <div class="ticket-info-item">
-                        <i class="fas fa-box"></i>
-                        <div>
-                            <h3>Пакет</h3>
-                            <p>${booking.package_name || 'Без пакета'}</p>
-                        </div>
-                    </div>
-                    <div class="ticket-info-item">
-                        <i class="fas fa-users"></i>
-                        <div>
-                            <h3>Количество человек</h3>
-                            <p>${booking.persons}</p>
-                        </div>
-                    </div>
-                    <div class="ticket-info-item">
-                        <i class="fas fa-check-circle"></i>
-                        <div>
-                            <h3>Статус</h3>
-                            <p>${booking.booking_status === 'pending' ? 'В обработке' : 
-                                (booking.booking_status === 'confirmed' ? 'Подтверждено' : 'Отменено')}</p>
-                        </div>
-                    </div>
-                    <div class="ticket-info-item">
-                        <i class="fas fa-ruble-sign"></i>
-                        <div>
-                            <h3>Стоимость</h3>
-                            <p>${new Intl.NumberFormat('ru-RU').format(booking.total_price)} ₽</p>
-                        </div>
-                    </div>
-                </div>
-                <div class="ticket-footer">
-                    <div class="contact-info">
-                        <p><i class="fas fa-envelope"></i> support@example.com</p>
-                        <p><i class="fas fa-phone"></i> +7 (495) 123-45-67</p>
-                    </div>
-                    <button class="download-btn" onclick="downloadTicket()">
-                        <i class="fas fa-download"></i> Скачать билет
-                    </button>
-                </div>
-            </div>
-            <div class="ticket-side">
-                <div class="qr-code">
-                    <img src="https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(`Бронирование #${booking.id}\nТур: ${booking.title}\nКлиент: ${user.username}\nДаты: ${booking.start_date} - ${booking.end_date}\nСтатус: ${booking.booking_status === 'pending' ? 'В обработке' : (booking.booking_status === 'confirmed' ? 'Подтверждено' : 'Отменено')}\nСтоимость: ${new Intl.NumberFormat('ru-RU').format(booking.total_price)} ₽\nДата выдачи: ${new Date().toLocaleString('ru-RU')}`)}" alt="QR code">
-                </div>
-                <div class="barcode">
-                    <svg id="barcode-${booking.id}"></svg>
-                </div>
-                <div class="issue-date">
-                    Выдан: ${new Date().toLocaleString('ru-RU')}
-                </div>
-            </div>
-        `;
-        
-        JsBarcode(`#barcode-${booking.id}`, String(booking.id).padStart(10, '0'), {
-            format: "CODE128",
-            width: 2,
-            height: 40,
-            displayValue: false,
-            background: "transparent",
-            lineColor: "#ffffff"
-        });
+        if (totalImages === 0) {
+            renderTicket();
+        } else {
+            const timeout = setTimeout(() => {
+                console.warn("Таймаут загрузки изображений");
+                renderTicket();
+            }, 5000);
 
-        modal.style.display = 'flex';
-        document.body.style.overflow = 'hidden';
+            for (let img of images) {
+                if (img.complete && img.naturalHeight !== 0) {
+                    loadedImages++;
+                } else {
+                    img.onload = () => {
+                        loadedImages++;
+                        if (loadedImages === totalImages) {
+                            clearTimeout(timeout);
+                            renderTicket();
+                        }
+                    };
+                    img.onerror = () => {
+                        console.error("Ошибка загрузки изображения:", img.src);
+                        loadedImages++;
+                        if (loadedImages === totalImages) {
+                            clearTimeout(timeout);
+                            renderTicket();
+                        }
+                    };
+                }
+            }
+
+            if (loadedImages === totalImages) {
+                clearTimeout(timeout);
+                renderTicket();
+            }
+        }
     } catch (error) {
-        console.error("Ошибка при открытии билета:", error.message);
-        alert("Ошибка при открытии билета. Проверьте консоль для подробностей.");
+        console.error("Ошибка при скачивании билета:", error);
+        const downloadBtn = document.querySelector('.download-btn');
+        if (downloadBtn) downloadBtn.style.display = 'flex';
+        alert("Не удалось скачать билет.");
     }
 }
+
+            
 
         function closeTicket() {
             document.getElementById('ticketModal').style.display = 'none';
             document.body.style.overflow = 'auto';
         }
 
-        function downloadTicket() {
-            try {
-                html2canvas(document.getElementById('ticketContent'), { scale: 2 }).then(canvas => {
-                    const link = document.createElement('a');
-                    link.download = `itravel-ticket-${new Date().toLocaleDateString('ru-RU')}.png`;
-                    link.href = canvas.toDataURL('image/png');
-                    link.click();
-                }).catch(error => {
-                    console.error("Ошибка при скачивании билета:", error);
-                    alert("Не удалось скачать билет.");
-                });
-            } catch (error) {
-                console.error("Ошибка при скачивании билета:", error);
-                alert("Не удалось скачать билет.");
-            }
-        }
+    
+
+        
 
       flatpickr("#calendar", {
     inline: true,

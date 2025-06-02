@@ -1,4 +1,3 @@
-
 <?php
 $current = basename($_SERVER['PHP_SELF']);
 // Подключаем конфигурацию
@@ -28,7 +27,7 @@ if (isset($_SESSION['user_id'])) {
     width: 100% !important;
     height: 60px !important; /* Убедитесь, что высота задана */
     display: flex !important; /* Гарантируем отображение */
-    background: linear-gradient(180deg, rgba(20, 30, 40, 0.85), rgba(30, 40, 50, 0.75)) !important;
+    background: linear-gradient(180deg, rgba(0, 80, 160, 0.85), rgba(164, 209, 255, 0.75)) !important;
     backdrop-filter: blur(15px) !important;
     -webkit-backdrop-filter: blur(15px) !important;
     border-radius: 0 0 16px 16px !important;
@@ -82,7 +81,7 @@ if (isset($_SESSION['user_id'])) {
         align-items: center !important;
         font-family: 'Roboto', sans-serif !important;
         font-weight: 500 !important;
-        color: #d0d0d0 !important;
+        color:rgb(255, 255, 255) !important;
         font-size: 22px !important;
         letter-spacing: 0.5px !important;
         transition: color 0.3s ease !important;
@@ -100,7 +99,7 @@ if (isset($_SESSION['user_id'])) {
         left: 0 !important;
         width: 100% !important;
         height: 2px !important;
-        background: #4CAF50 !important;
+        background:rgb(8, 0, 255) !important;
         transform: scaleX(0) !important;
         transform-origin: bottom left !important;
         transition: transform 0.3s ease !important;
@@ -126,7 +125,7 @@ if (isset($_SESSION['user_id'])) {
     .itravel-nav-link {
     display: flex !important;
     align-items: center !important;
-    color: #d0d0d0 !important;
+    color:rgb(255, 255, 255) !important;
     text-decoration: none !important;
     font-family: 'Roboto', sans-serif !important;
     font-weight: 400 !important;

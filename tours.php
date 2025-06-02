@@ -1,9 +1,8 @@
 <?php
-// Никаких пробелов или строк перед этим тегом
 header('Permissions-Policy: interest-cohort=()');
 session_start();
 $show_success = false;
-require_once('navbar.php'); // Убедитесь, что navbar.php не содержит вывода
+require_once('navbar.php');
 
 // Проверяем соединение
 if (!isset($conn) || $conn->connect_error) {
@@ -1142,6 +1141,9 @@ try {
         </div>
     </div>
 </div>
+
+
+
 
 <script>
     const transportMap = {
