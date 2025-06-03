@@ -149,6 +149,7 @@ try {
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css">
     <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/imask@7.6.1/dist/imask.min.js"></script>
     <style>
         :root {
             --primary-color: #2563eb;
@@ -411,7 +412,7 @@ try {
             padding: 2rem;
             border-radius: 1.5rem;
             width: 70%;
-            max-width: 1200px;
+            max-width: 1500px;
             box-shadow: 0 15px 60px rgba(0,0,0,0.25);
             position: relative;
             transform: scale(0.9);
@@ -599,7 +600,7 @@ try {
         .modal-gallery {
             position: relative;
             width: 100%;
-            height: 600px;
+            height: 830px;
             overflow: hidden;
             border-radius: 1rem;
             margin-bottom: 2rem;
@@ -968,6 +969,88 @@ try {
             50% { transform: scale(1.02); }
             100% { transform: scale(1); }
         }
+        .modal-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    padding-top: 1.25rem;
+    border-top: 1px solid var(--border-color);
+}
+
+.booking-section {
+    display: flex;
+    gap: 1.5rem;
+    width: 100%;
+}
+
+.form-disclaimer {
+    flex: 0 0 30%;
+    background: #e6f0fa;
+    border-radius: 0.75rem;
+    padding: 1rem;
+    border-left: 4px solid var(--primary-color);
+    color: #1e293b;
+    font-size: 0.875rem;
+    line-height: 1.5;
+    animation: fadeIn 0.3s ease-out;
+}
+
+.form-disclaimer i {
+    color: var(--primary-color);
+    font-size: 1.25rem;
+    margin-right: 0.75rem;
+    flex-shrink: 0;
+}
+
+.form-disclaimer p {
+    margin: 0;
+}
+
+.form-disclaimer strong {
+    font-weight: 600;
+}
+
+.form-disclaimer a {
+    color: var(--primary-color);
+    text-decoration: none;
+    font-weight: 600;
+    transition: color 0.3s ease;
+}
+
+.form-disclaimer a:hover {
+    color: #1d4ed8;
+}
+
+.booking-form {
+    flex: 1;
+    display: none;
+    padding: 1.5rem;
+    background: #f8fafc;
+    border-radius: 0.75rem;
+    margin-top: 0;
+    border: 1px solid #e2e8f0;
+}
+
+.booking-form.show {
+    display: block;
+    animation: fadeIn 0.3s ease-out;
+}
+
+@media (max-width: 768px) {
+    .booking-section {
+        flex-direction: column;
+    }
+
+    .form-disclaimer {
+        flex: 0 0 100%;
+        margin-bottom: 1.5rem;
+    }
+
+    .booking-form {
+        padding: 1rem;
+    }
+}
+        
 
     </style>
 </head>
@@ -1106,11 +1189,13 @@ try {
             </div>
 
             <div class="modal-footer">
+                
                 <div>
                     <div id="modalPrice" class="modal-price"></div>
                     <div id="modalStatus" class="modal-status"></div>
                 </div>
                 <div id="bookingForm" class="booking-form">
+                    
                     <div class="form-group">
                         <label for="bookingName" class="form-label">Имя:</label>
                         <input type="text" id="bookingName" class="form-input" placeholder="Ваше имя" required>
@@ -1131,14 +1216,21 @@ try {
                         <button id="confirmBooking" class="btn btn-primary">Подтвердить</button>
                         <button id="cancelBooking" class="btn btn-secondary">Отмена</button>
                     </div>
+                      <div class="form-disclaimer">
+                    <i class="fas fa-info-circle"></i>
+                    <p><strong>Важно</strong>: Указанные имя, фамилия и номер телефона будут проверяться при посадке на транспорт или регистрации на тур. Вводите актуальные данные, соответствующие вашим документам. Для уточнений свяжитесь со службой поддержки: <a href="tel:+74951234567">+7 (495) 123-4567</a> или <a href="mailto:support@itravel.com">support@itravel.com</a>.</p>
                 </div>
+                </div>
+                
                 <div id="successMessage" class="success-message">
                     <div class="success-icon"><i class="fas fa-check-circle"></i></div>
                     <p id="successText">Тур успешно забронирован! Мы свяжемся с вами для подтверждения.</p>
                 </div>
                 <button id="modalButton" class="modal-button">Забронировать</button>
             </div>
+          
         </div>
+        
     </div>
 </div>
 
@@ -1710,6 +1802,16 @@ if (tour.start_date && tour.end_date) {
             }
         }
     });
+    document.addEventListener('DOMContentLoaded', () => {
+    const phoneInput = document.getElementById('bookingPhone');
+    if (phoneInput) {
+        const phoneMask = IMask(phoneInput, {
+            mask: '+{7} (000) 000-00-00',
+            lazy: false,
+            placeholderChar: '_'
+        });
+    }
+});
 </script>
 </body>
 </html>

@@ -296,11 +296,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_contact'])) {
             </div>
             <div class="contact-item">
                 <i class="fas fa-envelope contact-icon"></i>
-                <a href="mailto:info@travelagency.ru">info@travelagency.ru</a>
+                <a href="mailto:info@travelagency.ru">support@itravel.com.</a>
             </div>
             <div class="contact-item">
                 <i class="fas fa-map-marker-alt contact-icon"></i>
-                <span>Москва, ул. Путешествий, д. 1</span>
+                <span>Невинномысск, ул. Путешествий, д. 1</span>
             </div>
         </div>
 
@@ -321,7 +321,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_contact'])) {
 
     <div class="section cta-section">
         <h2 class="section-title fade-in">Готовы к путешествию?</h2>
-        <a href="/travel/index.php" class="cta-button fade-in fade-in-delay-1">Посмотреть наши туры</a>
+        <a href="index.php" class="cta-button fade-in fade-in-delay-1">Посмотреть наши туры</a>
     </div>
 
     <script>

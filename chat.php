@@ -80,12 +80,12 @@ $messages = [];
 $selected_user_id = isset($_GET['user_id']) ? (int)$_GET['user_id'] : 0;
 
 if ($user_role === 'admin' && $selected_user_id) {
-    $stmt = $conn->prepare("SELECT cm.*, u.email AS sender_email 
-                           FROM chat_messages cm 
-                           JOIN users u ON cm.sender_id = u.id 
-                           WHERE cm.sender_id = ? OR cm.recipient_id = ? 
-                           ORDER BY cm.created_at ASC");
-    $stmt->bind_param("ii", $selected_user_id, $selected_user_id);
+   $stmt = $conn->prepare("SELECT cm.*, u.email AS sender_email 
+                       FROM chat_messages cm 
+                       JOIN users u ON cm.sender_id = u.id 
+                       WHERE cm.sender_id = ? OR cm.recipient_id = ? 
+                       ORDER BY cm.created_at ASC");
+$stmt->bind_param("ii", $selected_user_id, $selected_user_id);
     $stmt->execute();
     $result = $stmt->get_result();
     $messages = $result->fetch_all(MYSQLI_ASSOC);
@@ -122,33 +122,23 @@ if ($user_role === 'admin') {
     <title>Чат</title>
     <link href="https://fonts.googleapis.com/css2?family=Material+Icons+Outlined" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Icons+Outlined" rel="stylesheet">
 
     <style>
-        :root {
-            --bg-color: #f8fafc;
-            --chat-bg: #ffffff;
-            --text-color: #1e293b;
-            --sent-bg: #4f46e5;
-            --received-bg: #e5e7eb;
-            --accent-color: #4f46e5;
-            --border-color: #e5e7eb;
-            --shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-            --hover-bg: #f1f5f9;
-            --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        }
+      :root {
+    --bg-color: #e0f2ff;              /* светло-голубой фон */
+    --chat-bg: #ffffff;               /* белый фон чата */
+    --text-color: #0a2540;            /* тёмно-синий текст */
+    --sent-bg: #3b82f6;               /* ярко-синий для исходящих */
+    --received-bg: #dbeafe;           /* светло-голубой для входящих */
+    --accent-color: #2563eb;          /* синий для кнопок и акцентов */
+    --border-color: #bfdbfe;          /* бледно-голубая граница */
+    --shadow: 0 4px 20px rgba(59, 130, 246, 0.15); /* синяя тень */
+    --hover-bg: #e0f2ff;              /* подсветка при наведении */
+    --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
 
-        [data-theme="dark"] {
-            --bg-color: #1e293b;
-            --chat-bg: #2d3748;
-            --text-color: #e5e7eb;
-            --sent-bg: #6366f1;
-            --received-bg: #4b5563;
-            --accent-color: #6366f1;
-            --border-color: #4b5563;
-            --shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-            --hover-bg: #374151;
-        }
-
+   
         body {
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
             line-height: 1.6;
@@ -177,7 +167,7 @@ if ($user_role === 'admin') {
             display: flex;
             align-items: center;
             gap: 12px;
-            color: #AB4CFE;
+            color: rgb(0, 67, 202);
             margin-bottom: 24px;
             padding-bottom: 12px;
             border-bottom: 1px solid var(--border-color);
@@ -187,7 +177,7 @@ if ($user_role === 'admin') {
             margin: 0;
             font-size: 1.75rem;
             font-weight: 600;
-            color: #AB4CFE;
+            color:rgb(0, 67, 202);
         }
 
         .user-select select {
@@ -327,7 +317,7 @@ if ($user_role === 'admin') {
         .message-form button {
             padding: 12px 24px;
             background: var(--accent-color);
-            color: #ffffff;
+            color:rgb(0, 0, 0);
             border: none;
             border-radius: 8px;
             cursor: pointer;
@@ -442,60 +432,158 @@ if ($user_role === 'admin') {
                 right: 12px;
             }
         }
+        .chat-disclaimer {
+    display: flex;
+    align-items: flex-start;
+    background: linear-gradient(135deg, #F7F9FC, #E6F0FA);
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 16px;
+    border-left: 4px solid var(--accent-color);
+    box-shadow: var(--shadow);
+    animation: slideIn 0.5s ease-out;
+    transition: transform 0.3s ease;
+}
+
+[data-theme="dark"] .chat-disclaimer {
+    background: linear-gradient(135deg, #374151, #4b5563);
+    border-left-color: var(--accent-color);
+}
+
+.chat-disclaimer:hover {
+    transform: translateY(-2px);
+}
+
+.disclaimer-icon {
+    width: 40px;
+    height: 40px;
+    background: var(--accent-color);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #ffffff;
+    font-size: 20px;
+    margin-right: 16px;
+    flex-shrink: 0;
+    animation: pulse 2s infinite;
+}
+
+[data-theme="dark"] .disclaimer-icon {
+    background: var(--accent-color);
+}
+
+@keyframes pulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.1); }
+    100% { transform: scale(1); }
+}
+
+.disclaimer-content {
+    flex: 1;
+}
+
+.disclaimer-content p {
+    margin: 0;
+    font-size: 0.9rem;
+    color: var(--text-color);
+    line-height: 1.5;
+}
+
+[data-theme="dark"] .disclaimer-content p {
+    color: #e5e7eb;
+}
+
+.disclaimer-content strong {
+    font-weight: 600;
+}
+
+.disclaimer-content a {
+    color: var(--accent-color);
+    text-decoration: none;
+    font-weight: 600;
+    transition: color 0.3s ease;
+}
+
+.disclaimer-content a:hover {
+    color: #4338ca;
+}
+
+@media (max-width: 600px) {
+    .chat-disclaimer {
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        padding: 12px;
+    }
+
+    .disclaimer-icon {
+        margin-right: 0;
+        margin-bottom: 12px;
+    }
+}
     </style>
 </head>
 <body>
 
     
-    <div class="chat-container">
-        <div class="chat-header">
-            <span class="material-icons-outlined">chat</span>
-            <h2>Чат с администратором</h2>
-        </div>
-        
-        <?php if ($user_role === 'admin'): ?>
-            <div class="user-select">
-                <select onchange="location.href='chat.php?user_id='+this.value">
-                    <option value="">Выберите пользователя</option>
-                    <?php foreach ($users as $u): ?>
-                        <option value="<?= $u['id'] ?>" <?= $selected_user_id == $u['id'] ? 'selected' : '' ?>>
-                            <?= htmlspecialchars($u['email']) ?>
-                        </option>
-                    <?php endforeach; ?>
-                </select>
-            </div>
-        <?php endif; ?>
-        
-        <div class="chat-messages" id="chat-messages">
-            <?php if ($user_role === 'admin' && !$selected_user_id): ?>
-                <div class="no-user-selected">Выберите пользователя для просмотра сообщений</div>
-            <?php elseif (empty($messages) && $user_role !== 'admin'): ?>
-                <div class="no-user-selected">Нет сообщений в чате</div>
-            <?php else: ?>
-                <?php foreach ($messages as $msg): ?>
-                    <div class="message <?= $msg['sender_id'] == $user_id ? 'sent' : 'received' ?>">
-                        <div class="message-content">
-                            <div class="sender"><?= htmlspecialchars($msg['sender_email']) ?></div>
-                            <div class="content"><?= htmlspecialchars($msg['message']) ?></div>
-                            <div class="timestamp"><?= $msg['created_at'] ?></div>
-                        </div>
-                    </div>
+   <div class="chat-container">
+    <div class="chat-header">
+        <span class="material-icons-outlined">chat</span>
+        <h2>Чат с администратором</h2>
+    </div>
+    
+    <?php if ($user_role === 'admin'): ?>
+        <div class="user-select">
+            <select onchange="location.href='chat.php?user_id='+this.value">
+                <option value="">Выберите пользователя</option>
+                <?php foreach ($users as $u): ?>
+                    <option value="<?= $u['id'] ?>" <?= $selected_user_id == $u['id'] ? 'selected' : '' ?>>
+                        <?= htmlspecialchars($u['email']) ?>
+                    </option>
                 <?php endforeach; ?>
-            <?php endif; ?>
+            </select>
         </div>
-        
-        <?php if ($user_role !== 'admin' || $selected_user_id): ?>
-            <form class="message-form" id="message-form" method="POST">
-                <input type="text" name="message" placeholder="Введите сообщение..." required>
-                <?php if ($user_role === 'admin' && $selected_user_id): ?>
-                    <input type="hidden" name="recipient_id" value="<?= $selected_user_id ?>">
-                    <?php error_log("recipient_id в форме: $selected_user_id"); ?>
-                <?php endif; ?>
-                <button type="submit">Отправить</button>
-            </form>
+    <?php endif; ?>
+    
+    <div class="chat-messages" id="chat-messages">
+        <?php if ($user_role === 'admin' && !$selected_user_id): ?>
+            <div class="no-user-selected">Выберите пользователя для просмотра сообщений</div>
+        <?php elseif (empty($messages) && $user_role !== 'admin'): ?>
+            <div class="no-user-selected">Нет сообщений в чате</div>
+        <?php else: ?>
+            <?php foreach ($messages as $msg): ?>
+                <div class="message <?= $msg['sender_id'] == $user_id ? 'sent' : 'received' ?>">
+                    <div class="message-content">
+                        <div class="sender"><?= htmlspecialchars($msg['sender_email']) ?></div>
+                        <div class="content"><?= htmlspecialchars($msg['message']) ?></div>
+                        <div class="timestamp"><?= $msg['created_at'] ?></div>
+                    </div>
+                </div>
+            <?php endforeach; ?>
         <?php endif; ?>
     </div>
-
+    
+    <?php if ($user_role !== 'admin' || $selected_user_id): ?>
+        <div class="chat-disclaimer">
+            <div class="disclaimer-icon">
+                <span class="material-icons-outlined">info</span>
+            </div>
+            <div class="disclaimer-content">
+                <p><strong>Важно</strong>: Переписка в чате сохраняется и может быть использована для разрешения споров или уточнения деталей. Пожалуйста, будьте внимательны при отправке сообщений. Если у вас есть вопросы, свяжитесь с поддержкой: <a href="tel:+74951234567">+7 (495) 123-4567</a> или <a href="mailto:support@itravel.com">support@itravel.com</a>.</p>
+            </div>
+        </div>
+        
+        <form class="message-form" id="message-form" method="POST">
+            <input type="text" name="message" placeholder="Введите сообщение..." required>
+            <?php if ($user_role === 'admin' && $selected_user_id): ?>
+                <input type="hidden" name="recipient_id" value="<?= $selected_user_id ?>">
+                <?php error_log("recipient_id в форме: $selected_user_id"); ?>
+            <?php endif; ?>
+            <button type="submit">Отправить</button>
+        </form>
+    <?php endif; ?>
+</div>
 
     <script>
         // Прокрутка к последнему сообщению
@@ -526,7 +614,7 @@ if ($user_role === 'admin') {
                     window.location.reload();
                 })
                 .catch(error => console.error('Ошибка поллинга:', error));
-        }, 20000);
+        }, 90000);
 
      
 
