@@ -261,62 +261,65 @@ try {
         }
     }
 
-    // Обработка редактирования бронирования
-    if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_booking'])) {
-        $booking_id = (int)($_POST['booking_id'] ?? 0);
-        $status = trim($_POST['status'] ?? '');
-        $persons = (int)($_POST['persons'] ?? 0);
-        $package_id = (int)($_POST['package_id'] ?? 0);
+   // Обработка редактирования бронирования
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['edit_booking'])) {
+    $booking_id = (int)($_POST['booking_id'] ?? 0);
+    $status = trim($_POST['status'] ?? '');
+    $persons = (int)($_POST['persons'] ?? 0);
+    $package_id = (int)($_POST['package_id'] ?? 0);
+    $phone = trim($_POST['phone'] ?? '');
 
-        if (empty($status) || $persons <= 0 || $package_id <= 0) {
-            $error = 'Все поля обязательны, и количество человек должно быть больше 0.';
-        } elseif (!in_array($status, ['pending', 'confirmed', 'cancelled'])) {
-            $error = 'Неверный статус бронирования.';
+    if (empty($status) || $persons <= 0 || $package_id <= 0 || empty($phone)) {
+        $error = 'Все поля обязательны, и количество человек должно быть больше 0.';
+    } elseif (!in_array($status, ['pending', 'confirmed', 'cancelled'])) {
+        $error = 'Неверный статус бронирования.';
+    } elseif (!preg_match('/^\+?\d{10,15}$/', $phone)) {
+        $error = 'Неверный формат телефона. Используйте формат, например, +79991234567.';
+    } else {
+        $stmt = $conn->prepare("SELECT price FROM packages WHERE id = ?");
+        $stmt->bind_param('i', $package_id);
+        $stmt->execute();
+        $package_result = $stmt->get_result()->fetch_assoc();
+        $stmt->close();
+
+        if (!$package_result) {
+            $error = 'Выбранный пакет не существует.';
         } else {
-            $stmt = $conn->prepare("SELECT price FROM packages WHERE id = ?");
-            $stmt->bind_param('i', $package_id);
+            $package_price = is_numeric($package_result['price']) ? floatval($package_result['price']) : 0;
+
+            $stmt = $conn->prepare("SELECT travel_id FROM tour_bookings WHERE id = ?");
+            $stmt->bind_param('i', $booking_id);
             $stmt->execute();
-            $package_result = $stmt->get_result()->fetch_assoc();
+            $booking_result = $stmt->get_result()->fetch_assoc();
             $stmt->close();
 
-            if (!$package_result) {
-                $error = 'Выбранный пакет не существует.';
+            if (!$booking_result) {
+                $error = 'Бронирование не найдено.';
             } else {
-                $package_price = is_numeric($package_result['price']) ? floatval($package_result['price']) : 0;
+                $travel_id = (int)$booking_result['travel_id'];
 
-                $stmt = $conn->prepare("SELECT travel_id FROM tour_bookings WHERE id = ?");
-                $stmt->bind_param('i', $booking_id);
+                $stmt = $conn->prepare("SELECT price AS tour_price FROM travels WHERE id = ?");
+                $stmt->bind_param('i', $travel_id);
                 $stmt->execute();
-                $booking_result = $stmt->get_result()->fetch_assoc();
+                $travel_result = $stmt->get_result()->fetch_assoc();
                 $stmt->close();
 
-                if (!$booking_result) {
-                    $error = 'Бронирование не найдено.';
-                } else {
-                    $travel_id = (int)$booking_result['travel_id'];
+                $tour_price = is_numeric($travel_result['tour_price'] ?? 0) ? floatval($travel_result['tour_price']) : 0;
 
-                    $stmt = $conn->prepare("SELECT price AS tour_price FROM travels WHERE id = ?");
-                    $stmt->bind_param('i', $travel_id);
-                    $stmt->execute();
-                    $travel_result = $stmt->get_result()->fetch_assoc();
-                    $stmt->close();
+                $price = ($package_price * $persons) + ($tour_price * $persons);
 
-                    $tour_price = is_numeric($travel_result['tour_price'] ?? 0) ? floatval($travel_result['tour_price']) : 0;
+                $stmt = $conn->prepare("UPDATE tour_bookings SET status = ?, persons = ?, package_id = ?, price = ?, phone = ? WHERE id = ?");
+                $stmt->bind_param('siidsi', $status, $persons, $package_id, $price, $phone, $booking_id);
+                $stmt->execute();
+                $stmt->close();
 
-                    $price = ($package_price * $persons) + ($tour_price * $persons);
-
-                    $stmt = $conn->prepare("UPDATE tour_bookings SET status = ?, persons = ?, package_id = ?, price = ? WHERE id = ?");
-                    $stmt->bind_param('siidi', $status, $persons, $package_id, $price, $booking_id);
-                    $stmt->execute();
-                    $stmt->close();
-
-                    $success = 'Бронирование успешно обновлено.';
-                    header('Location: admin.php?success=' . urlencode($success));
-                    exit;
-                }
+                $success = 'Бронирование успешно обновлено.';
+                header('Location: admin.php?success=' . urlencode($success));
+                exit;
             }
         }
     }
+}
 
     // Обработка AJAX-запросов для пакетов и услуг
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_SERVER['CONTENT_TYPE']) && strpos($_SERVER['CONTENT_TYPE'], 'application/json') !== false) {
@@ -1513,9 +1516,9 @@ $stats['booking_labels'] = $labels;
                                         <td><?= htmlspecialchars($booking['package_name'] ?? 'Без пакета') ?></td>
                                         <td><?= htmlspecialchars($booking['price'] ?? '0') ?> ₽</td>
                                         <td>
-                                            <button class="btn btn-edit" onclick="openBookingModal(<?= $booking['id'] ?>, '<?= htmlspecialchars($booking['status']) ?>', <?= $booking['persons'] ?? 0 ?>, <?= $booking['package_id'] ?? 0 ?>)"><i class="fas fa-edit"></i> Редактировать</button>
-                                            <a href="?cancel=1&booking_id=<?= urlencode($booking['id'] ?? '') ?>" class="btn btn-cancel" onclick="return confirm('Вы уверены, что хотите отменить бронирование?');"><i class="fas fa-times"></i> Отменить</a>
-                                        </td>
+    <button class="btn btn-edit" onclick="openBookingModal(<?= $booking['id'] ?>, '<?= htmlspecialchars($booking['status']) ?>', <?= $booking['persons'] ?? 0 ?>, <?= $booking['package_id'] ?? 0 ?>, '<?= htmlspecialchars($booking['phone'] ?? '') ?>')"><i class="fas fa-edit"></i> Редактировать</button>
+    <a href="?cancel=1&booking_id=<?= urlencode($booking['id'] ?? '') ?>" class="btn btn-cancel" onclick="return confirm('Вы уверены, что хотите отменить бронирование?');"><i class="fas fa-times"></i> Отменить</a>
+</td>
                                     </tr>
                                 <?php endforeach; ?>
                             <?php endif; ?>
@@ -1807,39 +1810,43 @@ $stats['booking_labels'] = $labels;
                 </div>
             </div>
 
-            <div id="bookingModal" class="modal">
-                <div class="modal-content">
-                    <span class="close" onclick="closeModal('bookingModal')">×</span>
-                    <h2><i class="fas fa-suitcase"></i> Редактировать бронирование</h2>
-                    <form method="POST">
-                        <input type="hidden" name="edit_booking" value="1">
-                        <input type="hidden" id="booking_id" name="booking_id">
-                        <div class="form-group">
-                            <label for="booking_status"><i class="fas fa-toggle-on"></i> Статус</label>
-                            <select id="booking_status" name="status" required>
-                                <option value="pending">Ожидает</option>
-                                <option value="confirmed">Подтверждено</option>
-                                <option value="cancelled">Отменено</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label for="booking_persons"><i class="fas fa-users"></i> Количество человек</label>
-                            <input type="number" id="booking_persons" name="persons" min="1" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="booking_package_id"><i class="fas fa-box"></i> Пакет услуг</label>
-                            <select id="booking_package_id" name="package_id" required>
-                                <?php foreach ($packages as $package): ?>
-                                    <option value="<?= htmlspecialchars($package['id']) ?>"><?= htmlspecialchars($package['name']) ?></option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <button type="submit" class="btn btn-save"><i class="fas fa-save"></i> Сохранить</button>
-                        </div>
-                    </form>
-                </div>
+          <div id="bookingModal" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="closeModal('bookingModal')">×</span>
+        <h2><i class="fas fa-suitcase"></i> Редактировать бронирование</h2>
+        <form method="POST">
+            <input type="hidden" name="edit_booking" value="1">
+            <input type="hidden" id="booking_id" name="booking_id">
+            <div class="form-group">
+                <label for="booking_status"><i class="fas fa-toggle-on"></i> Статус</label>
+                <select id="booking_status" name="status" required>
+                    <option value="pending">Ожидает</option>
+                    <option value="confirmed">Подтверждено</option>
+                    <option value="cancelled">Отменено</option>
+                </select>
             </div>
+            <div class="form-group">
+                <label for="booking_persons"><i class="fas fa-users"></i> Количество человек</label>
+                <input type="number" id="booking_persons" name="persons" min="1" required>
+            </div>
+            <div class="form-group">
+                <label for="booking_phone"><i class="fas fa-phone"></i> Телефон</label>
+                <input type="text" id="booking_phone" name="phone" required>
+            </div>
+            <div class="form-group">
+                <label for="booking_package_id"><i class="fas fa-box"></i> Пакет услуг</label>
+                <select id="booking_package_id" name="package_id" required>
+                    <?php foreach ($packages as $package): ?>
+                        <option value="<?= htmlspecialchars($package['id']) ?>"><?= htmlspecialchars($package['name']) ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div class="form-group">
+                <button type="submit" class="btn btn-save"><i class="fas fa-save"></i> Сохранить</button>
+            </div>
+        </form>
+    </div>
+</div>
             <script>
     const packagePopularityData = {
         labels: <?= json_encode($stats['package_labels']) ?>,
@@ -1941,14 +1948,15 @@ $stats['booking_labels'] = $labels;
                             .catch(error => console.error('Ошибка загрузки пакетов:', error));
                     };
 
-                    // Открытие модального окна редактирования бронирования
-                    window.openBookingModal = function(id, status, persons, package_id) {
-                        document.getElementById('booking_id').value = id;
-                        document.getElementById('booking_status').value = status;
-                        document.getElementById('booking_persons').value = persons;
-                        document.getElementById('booking_package_id').value = package_id;
-                        document.getElementById('bookingModal').style.display = 'flex';
-                    };
+                    // Обновленная функция openBookingModal
+window.openBookingModal = function(id, status, persons, package_id, phone) {
+    document.getElementById('booking_id').value = id;
+    document.getElementById('booking_status').value = status;
+    document.getElementById('booking_persons').value = persons;
+    document.getElementById('booking_package_id').value = package_id;
+    document.getElementById('booking_phone').value = phone;
+    document.getElementById('bookingModal').style.display = 'flex';
+};
 
                     // Закрытие модального окна
                     window.closeModal = function(modalId) {
