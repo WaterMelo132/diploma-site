@@ -1,3 +1,4 @@
+
 <?php
 header('Permissions-Policy: interest-cohort=()');
 session_start();
@@ -149,7 +150,6 @@ try {
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.3/css/all.min.css">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css">
     <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js"></script>
-    <script src="https://unpkg.com/imask@7.6.1/dist/imask.min.js"></script>
     <style>
         :root {
             --primary-color: #2563eb;
@@ -181,11 +181,11 @@ try {
             color: white;
             min-height: 100vh;
         }
-         .navbar {
-
-    position: fixed !important;
-    top: 20px !important;
-}
+        
+        .navbar {
+            position: fixed !important;
+            top: 20px !important;
+        }
         
         .container {
             max-width: 1400px;
@@ -969,89 +969,88 @@ try {
             50% { transform: scale(1.02); }
             100% { transform: scale(1); }
         }
-        .modal-footer {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    padding-top: 1.25rem;
-    border-top: 1px solid var(--border-color);
-}
-
-.booking-section {
-    display: flex;
-    gap: 1.5rem;
-    width: 100%;
-}
-
-.form-disclaimer {
-    flex: 0 0 30%;
-    background: #e6f0fa;
-    border-radius: 0.75rem;
-    padding: 1rem;
-    border-left: 4px solid var(--primary-color);
-    color: #1e293b;
-    font-size: 0.875rem;
-    line-height: 1.5;
-    animation: fadeIn 0.3s ease-out;
-}
-
-.form-disclaimer i {
-    color: var(--primary-color);
-    font-size: 1.25rem;
-    margin-right: 0.75rem;
-    flex-shrink: 0;
-}
-
-.form-disclaimer p {
-    margin: 0;
-}
-
-.form-disclaimer strong {
-    font-weight: 600;
-}
-
-.form-disclaimer a {
-    color: var(--primary-color);
-    text-decoration: none;
-    font-weight: 600;
-    transition: color 0.3s ease;
-}
-
-.form-disclaimer a:hover {
-    color: #1d4ed8;
-}
-
-.booking-form {
-    flex: 1;
-    display: none;
-    padding: 1.5rem;
-    background: #f8fafc;
-    border-radius: 0.75rem;
-    margin-top: 0;
-    border: 1px solid #e2e8f0;
-}
-
-.booking-form.show {
-    display: block;
-    animation: fadeIn 0.3s ease-out;
-}
-
-@media (max-width: 768px) {
-    .booking-section {
-        flex-direction: column;
-    }
-
-    .form-disclaimer {
-        flex: 0 0 100%;
-        margin-bottom: 1.5rem;
-    }
-
-    .booking-form {
-        padding: 1rem;
-    }
-}
         
-
+        .modal-footer {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            padding-top: 1.25rem;
+            border-top: 1px solid var(--border-color);
+        }
+        
+        .booking-section {
+            display: flex;
+            gap: 1.5rem;
+            width: 100%;
+        }
+        
+        .form-disclaimer {
+            flex: 0 0 30%;
+            background: #e6f0fa;
+            border-radius: 0.75rem;
+            padding: 1rem;
+            border-left: 4px solid var(--primary-color);
+            color: #1e293b;
+            font-size: 0.875rem;
+            line-height: 1.5;
+            animation: fadeIn 0.3s ease-out;
+        }
+        
+        .form-disclaimer i {
+            color: var(--primary-color);
+            font-size: 1.25rem;
+            margin-right: 0.75rem;
+            flex-shrink: 0;
+        }
+        
+        .form-disclaimer p {
+            margin: 0;
+        }
+        
+        .form-disclaimer strong {
+            font-weight: 600;
+        }
+        
+        .form-disclaimer a {
+            color: var(--primary-color);
+            text-decoration: none;
+            font-weight: 600;
+            transition: color 0.3s ease;
+        }
+        
+        .form-disclaimer a:hover {
+            color: #1d4ed8;
+        }
+        
+        .booking-form {
+            flex: 1;
+            display: none;
+            padding: 1.5rem;
+            background: #f8fafc;
+            border-radius: 0.75rem;
+            margin-top: 0;
+            border: 1px solid #e2e8f0;
+        }
+        
+        .booking-form.show {
+            display: block;
+            animation: fadeIn 0.3s ease-out;
+        }
+        
+        @media (max-width: 768px) {
+            .booking-section {
+                flex-direction: column;
+            }
+        
+            .form-disclaimer {
+                flex: 0 0 100%;
+                margin-bottom: 1.5rem;
+            }
+        
+            .booking-form {
+                padding: 1rem;
+            }
+        }
     </style>
 </head>
 <body>
@@ -1189,13 +1188,11 @@ try {
             </div>
 
             <div class="modal-footer">
-                
                 <div>
                     <div id="modalPrice" class="modal-price"></div>
                     <div id="modalStatus" class="modal-status"></div>
                 </div>
                 <div id="bookingForm" class="booking-form">
-                    
                     <div class="form-group">
                         <label for="bookingName" class="form-label">Имя:</label>
                         <input type="text" id="bookingName" class="form-input" placeholder="Ваше имя" required>
@@ -1206,7 +1203,8 @@ try {
                     </div>
                     <div class="form-group">
                         <label for="bookingPhone" class="form-label">Телефон:</label>
-                        <input type="tel" id="bookingPhone" class="form-input" placeholder="+7 (___) ___-__-__" required>
+                        <input type="tel" id="bookingPhone" class="form-input" placeholder="+71234567890" required>
+                        <small style="color: #4b5563;">Введите номер телефона в формате +71234567890</small>
                     </div>
                     <div class="form-group">
                         <label for="bookingEmail" class="form-label">Email:</label>
@@ -1216,10 +1214,10 @@ try {
                         <button id="confirmBooking" class="btn btn-primary">Подтвердить</button>
                         <button id="cancelBooking" class="btn btn-secondary">Отмена</button>
                     </div>
-                      <div class="form-disclaimer">
-                    <i class="fas fa-info-circle"></i>
-                    <p><strong>Важно</strong>: Указанные имя, фамилия и номер телефона будут проверяться при посадке на транспорт или регистрации на тур. Вводите актуальные данные, соответствующие вашим документам. Для уточнений свяжитесь со службой поддержки: <a href="tel:+74951234567">+7 (495) 123-4567</a> или <a href="mailto:support@itravel.com">support@itravel.com</a>.</p>
-                </div>
+                    <div class="form-disclaimer">
+                        <i class="fas fa-info-circle"></i>
+                        <p><strong>Важно</strong>: Указанные имя, фамилия и номер телефона будут проверяться при посадке на транспорт или регистрации на тур. Вводите актуальные данные, соответствующие вашим документам. Для уточнений свяжитесь со службой поддержки: <a href="tel:+74951234567">+7 (495) 123-4567</a> или <a href="mailto:support@itravel.com">support@itravel.com</a>.</p>
+                    </div>
                 </div>
                 
                 <div id="successMessage" class="success-message">
@@ -1228,14 +1226,9 @@ try {
                 </div>
                 <button id="modalButton" class="modal-button">Забронировать</button>
             </div>
-          
         </div>
-        
     </div>
 </div>
-
-
-
 
 <script>
     const transportMap = {
@@ -1459,7 +1452,6 @@ try {
             color: '#64748b'
         };
         
-
         transportInfo.innerHTML = `
             <i class="fas fa-${transport.icon} ${tour.status === 'active' ? 'transport-icon-active ' + transport.class : ''}" 
                style="${tour.status === 'active' ? 'color: ' + transport.color : ''}"></i>
@@ -1467,16 +1459,16 @@ try {
             ${tour.transport_details ? `<div class="transport-details">${escapeHtml(tour.transport_details)}</div>` : ''}
         `;
 
-       const datesElement = document.getElementById('datesText');
-if (tour.start_date && tour.end_date) {
-    const startDate = new Date(tour.start_date).toLocaleDateString('ru-RU');
-    const endDate = new Date(tour.end_date).toLocaleDateString('ru-RU');
-    datesElement.textContent = `${startDate} — ${endDate}`;
-} else if (tour.status === 'inactive') {
-    datesElement.textContent = 'Даты недоступны';
-} else {
-    datesElement.textContent = 'Даты не указаны';
-}
+        const datesElement = document.getElementById('datesText');
+        if (tour.start_date && tour.end_date) {
+            const startDate = new Date(tour.start_date).toLocaleDateString('ru-RU');
+            const endDate = new Date(tour.end_date).toLocaleDateString('ru-RU');
+            datesElement.textContent = `${startDate} — ${endDate}`;
+        } else if (tour.status === 'inactive') {
+            datesElement.textContent = 'Даты недоступны';
+        } else {
+            datesElement.textContent = 'Даты не указаны';
+        }
 
         const promoTimer = document.getElementById('promoTimer');
         const timerText = document.getElementById('timerText');
@@ -1583,6 +1575,8 @@ if (tour.start_date && tour.end_date) {
             const persons = parseInt(bookingPersons.value.trim());
             const selectedPackage = document.querySelector('input[name="package"]:checked');
 
+            console.log('Отправляемый номер телефона:', phone); // Логирование для отладки
+
             if (!name || !phone || !email || !persons) {
                 alert('Пожалуйста, заполните все поля.');
                 return;
@@ -1594,7 +1588,8 @@ if (tour.start_date && tour.end_date) {
             }
 
             if (!/^\+?\d{10,15}$/.test(phone)) {
-                alert('Пожалуйста, введите корректный номер телефона.');
+                console.log('Некорректный формат номера:', phone);
+                alert('Пожалуйста, введите корректный номер телефона (например, +71234567890).');
                 return;
             }
 
@@ -1615,68 +1610,68 @@ if (tour.start_date && tour.end_date) {
         };
     }
 
-  function bookTour(tourId, name, phone, email, packageId, packageName, persons) {
-    const tour = toursData.find(t => t.id == tourId);
-    if (!tour) {
-        alert('Тур не найден!');
-        return;
-    }
-
-    // Добавляем user_id из сессии, если он доступен
-    const userId = <?php echo isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 'null'; ?>;
-    if (!userId) {
-        alert('Пользователь не авторизован. Пожалуйста, войдите в систему.');
-        return;
-    }
-
-    // Находим выбранный пакет
-    const selectedPackage = packageId ? tour.packages.find(pkg => pkg.id == packageId) : null;
-    // Рассчитываем общую цену: базовая цена тура + цена пакета (если выбран)
-    const packagePrice = selectedPackage && selectedPackage.price ? Number(selectedPackage.price) : 0;
-    const tourPrice = Number(tour.discount_price || tour.price || 0);
-    const totalPrice = (tourPrice + packagePrice) * persons;
-
-    const payload = {
-        travel_id: tourId,
-        name: name,
-        phone: phone,
-        email: email,
-        package_id: packageId,
-        user_id: userId,
-        persons: persons,
-        price: totalPrice // Передаем общую цену
-    };
-
-    fetch('/book_tour.php', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-        },
-        body: JSON.stringify(payload)
-    })
-    .then(response => {
-        if (!response.ok) {
-            return response.text().then(text => {
-                throw new Error(`HTTP error! Status: ${response.status}, Response: ${text}`);
-            });
+    function bookTour(tourId, name, phone, email, packageId, packageName, persons) {
+        const tour = toursData.find(t => t.id == tourId);
+        if (!tour) {
+            alert('Тур не найден!');
+            return;
         }
-        return response.json();
-    })
-    .then(data => {
-        if (data.success) {
-            bookingForm.classList.remove('show');
-            successMessage.classList.add('show');
-            successText.textContent = `Тур успешно забронирован для ${persons} человек по цене ${Number(totalPrice).toLocaleString('ru-RU')} руб.! Мы свяжемся с вами для подтверждения.`;
-            modalButton.style.display = 'none';
-        } else {
-            alert(data.message || 'Ошибка бронирования. Попробуйте снова.');
+
+        // Добавляем user_id из сессии, если он доступен
+        const userId = <?php echo isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 'null'; ?>;
+        if (!userId) {
+            alert('Пользователь не авторизован. Пожалуйста, войдите в систему.');
+            return;
         }
-    })
-    .catch(error => {
-        alert('Произошла ошибка при бронировании: ' + error.message);
-    });
-}
+
+        // Находим выбранный пакет
+        const selectedPackage = packageId ? tour.packages.find(pkg => pkg.id == packageId) : null;
+        // Рассчитываем общую цену: базовая цена тура + цена пакета (если выбран)
+        const packagePrice = selectedPackage && selectedPackage.price ? Number(selectedPackage.price) : 0;
+        const tourPrice = Number(tour.discount_price || tour.price || 0);
+        const totalPrice = (tourPrice + packagePrice) * persons;
+
+        const payload = {
+            travel_id: tourId,
+            name: name,
+            phone: phone,
+            email: email,
+            package_id: packageId,
+            user_id: userId,
+            persons: persons,
+            price: totalPrice
+        };
+
+        fetch('/book_tour.php', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            },
+            body: JSON.stringify(payload)
+        })
+        .then(response => {
+            if (!response.ok) {
+                return response.text().then(text => {
+                    throw new Error(`HTTP error! Status: ${response.status}, Response: ${text}`);
+                });
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (data.success) {
+                bookingForm.classList.remove('show');
+                successMessage.classList.add('show');
+                successText.textContent = `Тур успешно забронирован для ${persons} человек по цене ${Number(totalPrice).toLocaleString('ru-RU')} руб.! Мы свяжемся с вами для подтверждения.`;
+                modalButton.style.display = 'none';
+            } else {
+                alert(data.message || 'Ошибка бронирования. Попробуйте снова.');
+            }
+        })
+        .catch(error => {
+            alert('Произошла ошибка при бронировании: ' + error.message);
+        });
+    }
 
     function formatDescription(description) {
         if (!description.trim()) {
@@ -1802,75 +1797,6 @@ if (tour.start_date && tour.end_date) {
             }
         }
     });
-   document.addEventListener('DOMContentLoaded', () => {
-    const phoneInput = document.getElementById('bookingPhone');
-    let phoneMask;
-
-    if (!phoneInput) {
-        console.error('Поле телефона не найдено');
-        return;
-    }
-
-    // Проверка загрузки IMask
-    if (typeof IMask === 'undefined') {
-        console.error('IMask не загружен');
-        phoneInput.placeholder = 'Введите номер телефона (например, +71234567890)';
-    } else {
-        phoneMask = IMask(phoneInput, {
-            mask: '+{7} (000) 000-00-00',
-            lazy: false,
-            placeholderChar: '_'
-        });
-    }
-
-    confirmBookingBtn.onclick = () => {
-        const name = bookingName.value.trim();
-        // Получаем очищенный номер телефона
-        const phone = phoneMask ? phoneMask.unmaskedValue.trim() : bookingPhone.value.trim();
-        const email = bookingEmail.value.trim();
-        const persons = parseInt(bookingPersons.value.trim());
-        const selectedPackage = document.querySelector('input[name="package"]:checked');
-
-        console.log('Отправляемый номер телефона:', phone); // Логирование для отладки
-
-        if (!name || !phone || !email || !persons) {
-            alert('Пожалуйста, заполните все поля.');
-            return;
-        }
-
-        if (!selectedPackage && tour.packages && tour.packages.length > 0) {
-            alert('Пожалуйста, выберите пакет услуг.');
-            return;
-        }
-
-        // Проверка номера телефона
-        if (!/^\+?\d{10,15}$/.test(phone)) {
-            console.log('Некорректный формат номера:', phone); // Логирование ошибки
-            alert('Пожалуйста, введите корректный номер телефона (например, +71234567890).');
-            return;
-        }
-
-        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-            alert('Пожалуйста, введите корректный email.');
-            return;
-        }
-
-        if (persons < 1 || persons > 10) {
-            alert('Количество человек должно быть от 1 до 10.');
-            return;
-        }
-
-        const packageId = selectedPackage ? selectedPackage.value : null;
-        const packageName = selectedPackage ? tour.packages.find(pkg => pkg.id == packageId).name : 'Без пакета';
-
-        bookTour(tourId, name, phone, email, packageId, packageName, persons);
-    };
-});
 </script>
 </body>
 </html>
-
-
-
-
- 

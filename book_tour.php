@@ -1,5 +1,5 @@
 <?php
-ob_start();
+ob_start(); // Включаем буферизацию вывода
 session_start();
 error_reporting(E_ALL);
 ini_set('display_errors', 0);
@@ -9,6 +9,7 @@ ini_set('error_log', __DIR__ . '/php_errors.log');
 header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: no-cache, must-revalidate');
 
+// Конфигурация базы данных
 $db_config = [
     'host' => 'db4free.net',
     'user' => 'myusername',
@@ -16,6 +17,7 @@ $db_config = [
     'name' => 'travel_agency'
 ];
 
+// Логирование для отладки
 function debug_log($message) {
     @file_put_contents(__DIR__ . '/book_tour_debug.log', date('[Y-m-d H:i:s] ') . $message . "\n", FILE_APPEND);
 }
@@ -53,14 +55,13 @@ try {
 
     $travel_id = (int)$input['travel_id'];
     $name = trim($input['name']);
-    // Очистка номера телефона от пробелов, скобок и дефисов
-    $phone = preg_replace('/[\s\(\)-]/', '', trim($input['phone']));
+    $phone = trim($input['phone']);
     $email = trim($input['email']);
     $persons = (int)$input['persons'];
     $price = isset($input['price']) ? (float)$input['price'] : null;
     $package_id = isset($input['package_id']) && $input['package_id'] !== null ? (int)$input['package_id'] : null;
     $user_id = (int)$_SESSION['user_id'];
-    $status = 'pending';
+    $status = 'pending'; // Статус "в обработке"
 
     debug_log("Полученные данные: travel_id=$travel_id, name=$name, phone=$phone, email=$email, persons=$persons, price=" . ($price ?? 'null') . ", package_id=" . ($package_id ?? 'null') . ", user_id=$user_id, status=$status");
 
@@ -68,9 +69,7 @@ try {
         throw new Exception('Некорректный ID тура');
     }
 
-    // Проверка номера телефона
     if (!preg_match('/^\+?\d{10,15}$/', $phone)) {
-        debug_log("Некорректный номер телефона после очистки: $phone");
         throw new Exception('Некорректный номер телефона');
     }
 
@@ -228,6 +227,7 @@ try {
         $conn->close();
     }
     debug_log("Конец обработки запроса");
+    // Очищаем буфер и отправляем только JSON
     ob_end_clean();
     echo json_encode($response, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
 }
