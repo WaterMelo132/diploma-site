@@ -1802,15 +1802,69 @@ if (tour.start_date && tour.end_date) {
             }
         }
     });
-    document.addEventListener('DOMContentLoaded', () => {
+   document.addEventListener('DOMContentLoaded', () => {
     const phoneInput = document.getElementById('bookingPhone');
-    if (phoneInput) {
-        const phoneMask = IMask(phoneInput, {
+    let phoneMask;
+
+    if (!phoneInput) {
+        console.error('Поле телефона не найдено');
+        return;
+    }
+
+    // Проверка загрузки IMask
+    if (typeof IMask === 'undefined') {
+        console.error('IMask не загружен');
+        phoneInput.placeholder = 'Введите номер телефона (например, +71234567890)';
+    } else {
+        phoneMask = IMask(phoneInput, {
             mask: '+{7} (000) 000-00-00',
             lazy: false,
             placeholderChar: '_'
         });
     }
+
+    confirmBookingBtn.onclick = () => {
+        const name = bookingName.value.trim();
+        // Получаем очищенный номер телефона
+        const phone = phoneMask ? phoneMask.unmaskedValue.trim() : bookingPhone.value.trim();
+        const email = bookingEmail.value.trim();
+        const persons = parseInt(bookingPersons.value.trim());
+        const selectedPackage = document.querySelector('input[name="package"]:checked');
+
+        console.log('Отправляемый номер телефона:', phone); // Логирование для отладки
+
+        if (!name || !phone || !email || !persons) {
+            alert('Пожалуйста, заполните все поля.');
+            return;
+        }
+
+        if (!selectedPackage && tour.packages && tour.packages.length > 0) {
+            alert('Пожалуйста, выберите пакет услуг.');
+            return;
+        }
+
+        // Проверка номера телефона
+        if (!/^\+?\d{10,15}$/.test(phone)) {
+            console.log('Некорректный формат номера:', phone); // Логирование ошибки
+            alert('Пожалуйста, введите корректный номер телефона (например, +71234567890).');
+            return;
+        }
+
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+            alert('Пожалуйста, введите корректный email.');
+            return;
+        }
+
+        if (persons < 1 || persons > 10) {
+            alert('Количество человек должно быть от 1 до 10.');
+            return;
+        }
+
+        const packageId = selectedPackage ? selectedPackage.value : null;
+        const packageName = selectedPackage ? tour.packages.find(pkg => pkg.id == packageId).name : 'Без пакета';
+
+        bookTour(tourId, name, phone, email, packageId, packageName, persons);
+    };
 });
 </script>
 </body>
