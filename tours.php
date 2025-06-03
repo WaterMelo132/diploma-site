@@ -1375,16 +1375,16 @@ try {
             ${tour.transport_details ? `<div class="transport-details">${escapeHtml(tour.transport_details)}</div>` : ''}
         `;
 
-        const datesElement = document.getElementById('datesText');
-        if (tour.status === 'inactive') {
-            datesElement.textContent = 'Даты недоступны';
-        } else if (tour.start_date && tour.end_date) {
-            const startDate = new Date(tour.start_date).toLocaleDateString('ru-RU');
-            const endDate = new Date(tour.end_date).toLocaleDateString('ru-RU');
-            datesElement.textContent = `${startDate} — ${endDate}`;
-        } else {
-            datesElement.textContent = 'Даты не указаны';
-        }
+       const datesElement = document.getElementById('datesText');
+if (tour.start_date && tour.end_date) {
+    const startDate = new Date(tour.start_date).toLocaleDateString('ru-RU');
+    const endDate = new Date(tour.end_date).toLocaleDateString('ru-RU');
+    datesElement.textContent = `${startDate} — ${endDate}`;
+} else if (tour.status === 'inactive') {
+    datesElement.textContent = 'Даты недоступны';
+} else {
+    datesElement.textContent = 'Даты не указаны';
+}
 
         const promoTimer = document.getElementById('promoTimer');
         const timerText = document.getElementById('timerText');

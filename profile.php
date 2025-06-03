@@ -1314,6 +1314,103 @@ $stmt->close();
             transform: scale(1.05);
             background: var(--secondary);
         }
+       .disclaimer-card {
+    display: flex;
+    align-items: flex-start;
+    background: linear-gradient(135deg, #F7F9FC, #E6F0FA);
+    border-radius: 15px;
+    padding: 20px;
+    margin-bottom: 20px;
+    box-shadow: var(--shadow);
+    border-left: 5px solid var(--primary);
+    animation: slideIn 0.5s ease-out;
+    transition: transform 0.3s ease;
+}
+
+.disclaimer-card:hover {
+    transform: translateY(-3px);
+}
+
+.disclaimer-icon {
+    width: 50px;
+    height: 50px;
+    background: var(--primary);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--white);
+    font-size: 24px;
+    margin-right: 20px;
+    flex-shrink: 0;
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.1); }
+    100% { transform: scale(1); }
+}
+
+@keyframes slideIn {
+    from { transform: translateX(-20px); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+}
+
+.disclaimer-content h3 {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--dark-text);
+    margin-bottom: 10px;
+}
+
+.disclaimer-content p {
+    font-size: 14px;
+    color: var(--dark-text);
+    line-height: 1.6;
+}
+
+.disclaimer-content a {
+    color: var(--primary);
+    text-decoration: none;
+    font-weight: 600;
+    transition: color 0.3s ease;
+}
+
+.disclaimer-content a:hover {
+    color: var(--secondary);
+}
+
+.form-message.warning {
+    background: #FFF7E6;
+    color: #7B341E;
+    padding: 15px;
+    border-radius: 8px;
+    font-size: 14px;
+    margin-bottom: 20px;
+    border-left: 5px solid #FBBF24;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.form-message.warning i {
+    color: #FBBF24;
+    font-size: 16px;
+}
+
+@media (max-width: 768px) {
+    .disclaimer-card {
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+    }
+
+    .disclaimer-icon {
+        margin-right: 0;
+        margin-bottom: 15px;
+    }
+}
     </style>
 </head>
 <body>
@@ -1493,75 +1590,85 @@ $stmt->close();
             </div>
         </div>
 
-        <!-- Билеты -->
-        <div class="main-content" id="bilety">
-            <div class="section">
-                <h2 class="section-title"><i class="fas fa-ticket-alt"></i> Мои билеты</h2>
-                <?php
-                $pending_count = 0;
-                foreach ($bookings as $tour) {
-                    foreach ($tour['reservations'] as $reservation) {
-                        if (($reservation['booking_status'] ?? 'pending') === 'pending') {
-                            $pending_count++;
-                        }
-                    }
-                }
-                if ($pending_count > 0): ?>
-                    <div class="form-message warning">
-                        У вас есть <?php echo $pending_count; ?> неподтвержденных заявок. Пожалуйста, дождитесь подтверждения для получения билетов.
-                    </div>
-                <?php endif; ?>
-                <div class="ticket-list">
-                    <?php
-                    $confirmed_bookings = false;
-                    foreach ($bookings as $travel_id => $tour):
-                        foreach ($tour['reservations'] as $reservation):
-                            if (($reservation['booking_status'] ?? 'pending') !== 'confirmed') {
-                                continue;
-                            }
-                            $confirmed_bookings = true;
-                            $bookingData = [
-                                'id' => $reservation['id'] ?? 0,
-                                'title' => htmlspecialchars($tour['title'] ?? 'Без названия', ENT_QUOTES, 'UTF-8'),
-                                'destination' => htmlspecialchars($tour['destination'] ?? 'Не указано', ENT_QUOTES, 'UTF-8'),
-                                'start_date' => $tour['start_date'] ?? date('Y-m-d'),
-                                'end_date' => $tour['end_date'] ?? date('Y-m-d'),
-                                'booking_status' => $reservation['booking_status'] ?? 'pending',
-                                'package_name' => htmlspecialchars($reservation['package_name'] ?? 'Без пакета', ENT_QUOTES, 'UTF-8'),
-                                'persons' => $reservation['persons'] ?? 1,
-                                'created_at' => $reservation['created_at'] ?? date('Y-m-d H:i:s'),
-                                'total_price' => $reservation['total_price'] ?? 0,
-                                'username' => htmlspecialchars($user['username'], ENT_QUOTES, 'UTF-8'),
-                                'image_url' => $tour['image_url'] ?? 'https://via.placeholder.com/100'
-                            ];
-                            ?>
-                            <div class="ticket-item">
-                                <div class="ticket-content" onclick='openTicket(<?= json_encode($bookingData, JSON_HEX_QUOT | JSON_HEX_APOS) ?>)'>
-                                    <h4><?= htmlspecialchars($tour['title'] ?? 'Без названия') ?> (Билет #<?= $reservation['id'] ?>)</h4>
-                                    <p><i class="fas fa-map-marker-alt"></i> <?= htmlspecialchars($tour['destination'] ?? 'Не указано') ?></p>
-                                    <p><i class="far fa-calendar-alt"></i> <?= date('d.m.Y', strtotime($tour['start_date'])) ?> - <?= date('d.m.Y', strtotime($tour['end_date'])) ?></p>
-                                    <p><i class="fas fa-ruble-sign"></i> <?= number_format($reservation['total_price'], 2, ',', ' ') ?> ₽</p>
-                                </div>
-                                <div class="ticket-actions">
-                                    <?php if (($reservation['booking_status'] ?? 'pending') === 'confirmed'): ?>
-                                        <a href="?cancel=1&booking_id=<?= $reservation['id'] ?>" class="btn btn-danger" onclick="return confirm('Вы точно уверены, что хотите отменить билет?');">
-                                            <i class="fas fa-times"></i> Отказаться
-                                        </a>
-                                    <?php endif; ?>
-                                </div>
-                            </div>
-                        <?php endforeach; ?>
-                    <?php endforeach; ?>
-                    <?php if (!$confirmed_bookings): ?>
-                        <div class="no-bookings">
-                            <i class="fas fa-ticket-alt"></i>
-                            <h3>У вас пока нет подтвержденных билетов</h3>
-                            <p>Забронируйте тур и дождитесь подтверждения, чтобы получить билет!</p>
-                        </div>
-                    <?php endif; ?>
-                </div>
+       <!-- Билеты -->
+<div class="main-content" id="bilety">
+    <div class="section">
+        <h2 class="section-title"><i class="fas fa-ticket-alt"></i> Мои билеты</h2>
+        <div class="disclaimer-card">
+            <div class="disclaimer-icon">
+                <i class="fas fa-info-circle"></i>
+            </div>
+            <div class="disclaimer-content">
+                <h3>Важная информация</h3>
+                <p>Билеты, представленные в разделе «Мои билеты», являются электронным подтверждением бронирования туристических услуг. Данный документ не подлежит передаче или продаже и служит исключительно для подтверждения права на участие в забронированном туре. Оригинальный проездной документ (при необходимости) предоставляется организатором тура на месте. Для уточнения деталей свяжитесь со службой поддержки по телефону <a href="tel:+74951234567">+7 (495) 123-4567</a> или email <a href="mailto:support@itravel.com">support@itravel.com</a>.</p>
             </div>
         </div>
+        <?php
+        $pending_count = 0;
+        foreach ($bookings as $tour) {
+            foreach ($tour['reservations'] as $reservation) {
+                if (($reservation['booking_status'] ?? 'pending') === 'pending') {
+                    $pending_count++;
+                }
+            }
+        }
+        if ($pending_count > 0): ?>
+            <div class="form-message warning">
+                <span><i class="fas fa-exclamation-triangle"></i></span>
+                У вас есть <?php echo $pending_count; ?> неподтвержденных заявок. Пожалуйста, дождитесь подтверждения для получения билетов.
+            </div>
+        <?php endif; ?>
+        <div class="ticket-list">
+            <?php
+            $confirmed_bookings = false;
+            foreach ($bookings as $travel_id => $tour):
+                foreach ($tour['reservations'] as $reservation):
+                    if (($reservation['booking_status'] ?? 'pending') !== 'confirmed') {
+                        continue;
+                    }
+                    $confirmed_bookings = true;
+                    $bookingData = [
+                        'id' => $reservation['id'] ?? 0,
+                        'title' => htmlspecialchars($tour['title'] ?? 'Без названия', ENT_QUOTES, 'UTF-8'),
+                        'destination' => htmlspecialchars($tour['destination'] ?? 'Не указано', ENT_QUOTES, 'UTF-8'),
+                        'start_date' => $tour['start_date'] ?? date('Y-m-d'),
+                        'end_date' => $tour['end_date'] ?? date('Y-m-d'),
+                        'booking_status' => $reservation['booking_status'] ?? 'pending',
+                        'package_name' => htmlspecialchars($reservation['package_name'] ?? 'Без пакета', ENT_QUOTES, 'UTF-8'),
+                        'persons' => $reservation['persons'] ?? 1,
+                        'created_at' => $reservation['created_at'] ?? date('Y-m-d H:i:s'),
+                        'total_price' => $reservation['total_price'] ?? 0,
+                        'username' => htmlspecialchars($user['username'], ENT_QUOTES, 'UTF-8'),
+                        'image_url' => $tour['image_url'] ?? 'https://via.placeholder.com/100'
+                    ];
+                    ?>
+                    <div class="ticket-item">
+                        <div class="ticket-content" onclick='openTicket(<?= json_encode($bookingData, JSON_HEX_QUOT | JSON_HEX_APOS) ?>)'>
+                            <h4><?= htmlspecialchars($tour['title'] ?? 'Без названия') ?> (Билет #<?= $reservation['id'] ?>)</h4>
+                            <p><i class="fas fa-map-marker-alt"></i> <?= htmlspecialchars($tour['destination'] ?? 'Не указано') ?></p>
+                            <p><i class="far fa-calendar-alt"></i> <?= date('d.m.Y', strtotime($tour['start_date'])) ?> - <?= date('d.m.Y', strtotime($tour['end_date'])) ?></p>
+                            <p><i class="fas fa-ruble-sign"></i> <?= number_format($reservation['total_price'], 2, ',', ' ') ?> ₽</p>
+                        </div>
+                        <div class="ticket-actions">
+                            <?php if (($reservation['booking_status'] ?? 'pending') === 'confirmed'): ?>
+                                <a href="?cancel=1&booking_id=<?= $reservation['id'] ?>" class="btn btn-danger" onclick="return confirm('Вы точно уверены, что хотите отменить билет?');">
+                                    <i class="fas fa-times"></i> Отказаться
+                                </a>
+                            <?php endif; ?>
+                        </div>
+                    </div>
+                <?php endforeach; ?>
+            <?php endforeach; ?>
+            <?php if (!$confirmed_bookings): ?>
+                <div class="no-bookings">
+                    <i class="fas fa-ticket-alt"></i>
+                    <h3>У вас пока нет подтвержденных билетов</h3>
+                    <p>Забронируйте тур и дождитесь подтверждения, чтобы получить билет!</p>
+                </div>
+            <?php endif; ?>
+        </div>
+    </div>
+</div>
 
         <!-- Бронирования -->
         <div class="main-content" id="bronirovaniya">
