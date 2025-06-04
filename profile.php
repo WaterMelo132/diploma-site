@@ -1708,7 +1708,7 @@ $stmt->close();
         </div>
     </div>
 </div>
-</div>
+
 
         <!-- Бронирования -->
         <div class="main-content" id="bronirovaniya">
@@ -1803,6 +1803,7 @@ $stmt->close();
                 <div id="ticketContent" class="ticket"></div>
             </div>
         </div>
+    </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
