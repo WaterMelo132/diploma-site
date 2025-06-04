@@ -968,10 +968,61 @@ try {
             50% { transform: scale(1.02); }
             100% { transform: scale(1); }
         }
+/* Стили для загрузочного экрана */
+.loader {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  background-color: #f0f0f0;
+  z-index: 9999;
+}
 
+/* Стили для спиннера */
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 5px solid #3498db;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Существующие стили для .loader и .spinner остаются без изменений */
+
+/* Стили для основного контента */
+#content {
+    display: none; /* Изначально скрыт */
+    opacity: 0;
+    transition: opacity 0.5s ease-in-out; /* Плавное появление */
+}
+
+#content.loaded {
+    display: block;
+    opacity: 1;
+}
     </style>
 </head>
 <body>
+
+<div id="loader" class="loader">
+    <div class="spinner"></div>
+    <p>Загрузка...</p>
+  </div>
+
+
+  <div id="content" style="display: none;">
 <div class="container">
     <h1 class="page-title">Наши туры</h1>
 
@@ -1141,7 +1192,7 @@ try {
         </div>
     </div>
 </div>
-
+</div>
 
 
 
@@ -1710,6 +1761,32 @@ if (tour.start_date && tour.end_date) {
             }
         }
     });
+// Ждем полной загрузки страницы и данных
+document.addEventListener('DOMContentLoaded', function() {
+    // Проверяем, что данные туров загружены
+    if (typeof toursData !== 'undefined' && toursData.length >= 0) {
+        // Скрываем лоадер и показываем контент
+        showContent();
+    } else {
+        // Если данные ещё не загружены, ждём
+        const checkDataInterval = setInterval(() => {
+            if (typeof toursData !== 'undefined' && toursData.length >= 0) {
+                clearInterval(checkDataInterval);
+                showContent();
+            }
+        }, 100);
+    }
+
+    function showContent() {
+        const loader = document.getElementById('loader');
+        const content = document.getElementById('content');
+        if (loader && content) {
+            loader.style.display = 'none';
+            content.style.display = 'block';
+            content.classList.add('loaded'); // Для плавного появления
+        }
+    }
+});
 </script>
 </body>
 </html>

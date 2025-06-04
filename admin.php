@@ -1277,6 +1277,7 @@ $stats['booking_labels'] = $labels;
     </style>
 </head>
 <body>
+    
     <div class="container">
         <div class="sidebar">
             <div class="logo">iTravel</div>
@@ -2239,3 +2240,4 @@ window.openBookingModal = function(id, status, persons, package_id, phone) {
     </div>
 </body>
 </html>
+

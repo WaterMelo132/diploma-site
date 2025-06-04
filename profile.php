@@ -1411,9 +1411,48 @@ $stmt->close();
         margin-bottom: 15px;
     }
 }
+.loader {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    background-color: #f0f0f0;
+    z-index: 9999;
+}
+.spinner {
+    width: 40px;
+    height: 40px;
+    border: 5px solid #3498db;
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+#content {
+    display: none;
+    opacity: 0;
+    transition: opacity 0.5s ease-in-out;
+}
+#content.loaded {
+    display: block;
+    opacity: 1;
+}
     </style>
 </head>
 <body>
+
+<div id="loader" class="loader">
+    <div class="spinner"></div>
+    <p>Загрузка...</p>
+</div>
+<div id="content">
     <div class="container">
         <!-- Sidebar -->
         <div class="sidebar">
@@ -1669,6 +1708,7 @@ $stmt->close();
         </div>
     </div>
 </div>
+</div>
 
         <!-- Бронирования -->
         <div class="main-content" id="bronirovaniya">
@@ -1916,6 +1956,16 @@ $stmt->close();
             }
         }
 
+        document.addEventListener('DOMContentLoaded', function() {
+    const loader = document.getElementById('loader');
+    const content = document.getElementById('content');
+    if (loader && content) {
+        loader.style.display = 'none';
+        content.style.display = 'block';
+        content.classList.add('loaded');
+    }
+});
+
         function downloadTicket() {
             try {
                 const ticketContent = document.getElementById('ticketContent');
@@ -2085,3 +2135,4 @@ $stmt->close();
     </script>
 </body>
 </html>
+
