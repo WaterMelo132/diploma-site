@@ -692,6 +692,13 @@ try {
             margin-top: 1.5rem;
             border: 1px solid #e2e8f0;
         }
+
+       .booking-loader {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 40px;
+}
         
         .booking-form.show {
             display: block;
@@ -1187,6 +1194,9 @@ try {
                     <div class="success-icon"><i class="fas fa-check-circle"></i></div>
                     <p id="successText">Тур успешно забронирован! Мы свяжемся с вами для подтверждения.</p>
                 </div>
+               <div class="booking-loader" style="display: none;">
+    <div class="spinner" style="width: 24px; height: 24px; border: 3px solid #3498db; border-top-color: transparent; border-radius: 50%; animation: spin 1s linear infinite;"></div>
+</div>
                 <button id="modalButton" class="modal-button">Забронировать</button>
             </div>
         </div>
@@ -1574,26 +1584,28 @@ if (tour.start_date && tour.end_date) {
         };
     }
 
-  function bookTour(tourId, name, phone, email, packageId, packageName, persons) {
+ function bookTour(tourId, name, phone, email, packageId, packageName, persons) {
     const tour = toursData.find(t => t.id == tourId);
     if (!tour) {
         alert('Тур не найден!');
         return;
     }
 
-    // Добавляем user_id из сессии, если он доступен
     const userId = <?php echo isset($_SESSION['user_id']) ? (int)$_SESSION['user_id'] : 'null'; ?>;
     if (!userId) {
         alert('Пользователь не авторизован. Пожалуйста, войдите в систему.');
         return;
     }
 
-    // Находим выбранный пакет
     const selectedPackage = packageId ? tour.packages.find(pkg => pkg.id == packageId) : null;
-    // Рассчитываем общую цену: базовая цена тура + цена пакета (если выбран)
     const packagePrice = selectedPackage && selectedPackage.price ? Number(selectedPackage.price) : 0;
     const tourPrice = Number(tour.discount_price || tour.price || 0);
     const totalPrice = (tourPrice + packagePrice) * persons;
+
+    // Скрываем форму и показываем лоадер
+    bookingForm.classList.remove('show');
+    confirmBookingBtn.style.display = 'none';
+    document.querySelector('.booking-loader').style.display = 'flex';
 
     const payload = {
         travel_id: tourId,
@@ -1603,7 +1615,7 @@ if (tour.start_date && tour.end_date) {
         package_id: packageId,
         user_id: userId,
         persons: persons,
-        price: totalPrice // Передаем общую цену
+        price: totalPrice
     };
 
     fetch('/book_tour.php', {
@@ -1623,16 +1635,24 @@ if (tour.start_date && tour.end_date) {
         return response.json();
     })
     .then(data => {
+        // Скрываем лоадер
+        document.querySelector('.booking-loader').style.display = 'none';
+        confirmBookingBtn.style.display = 'block';
+
         if (data.success) {
-            bookingForm.classList.remove('show');
             successMessage.classList.add('show');
             successText.textContent = `Тур успешно забронирован для ${persons} человек по цене ${Number(totalPrice).toLocaleString('ru-RU')} руб.! Мы свяжемся с вами для подтверждения.`;
             modalButton.style.display = 'none';
         } else {
+            bookingForm.classList.add('show'); // Показываем форму при ошибке
             alert(data.message || 'Ошибка бронирования. Попробуйте снова.');
         }
     })
     .catch(error => {
+        // Скрываем лоадер и показываем форму при ошибке
+        document.querySelector('.booking-loader').style.display = 'none';
+        confirmBookingBtn.style.display = 'block';
+        bookingForm.classList.add('show');
         alert('Произошла ошибка при бронировании: ' + error.message);
     });
 }

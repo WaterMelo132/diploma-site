@@ -6,119 +6,316 @@ require_once 'navbar.php';
 
 // Проверка авторизации
 if (!isset($_SESSION['user_id'])) {
+    if (isset($_GET['ajax']) && $_GET['ajax'] === 'messages') {
+        header('Content-Type: application/json');
+        echo json_encode(['error' => 'Session expired']);
+        exit;
+    }
     header("Location: login.php");
-    exit();
+    exit;
 }
 
-// Включение отладки
-ini_set('display_errors', 1);
-ini_set('display_startup_errors', 1);
-error_reporting(E_ALL);
+// Включение отладки в dev-среде
+$is_dev = in_array($_SERVER['SERVER_NAME'], ['localhost', '127.0.0.1']);
+if ($is_dev) {
+    ini_set('display_errors', 1);
+    ini_set('display_startup_errors', 1);
+    error_reporting(E_ALL);
+} else {
+    ini_set('display_errors', 0);
+    ini_set('display_startup_errors', 0);
+}
 
 // Получение данных пользователя
-$user_id = $_SESSION['user_id'];
-$stmt = $conn->prepare("SELECT email, role FROM users WHERE id = ?");
+$user_id = (int)$_SESSION['user_id'];
+$stmt = $conn->prepare("SELECT email, username, role FROM users WHERE id = ?");
+if (!$stmt) {
+    error_log("Prepare failed for user query: " . $conn->error);
+    if (isset($_GET['ajax']) && $_GET['ajax'] === 'messages') {
+        header('Content-Type: application/json');
+        echo json_encode(['error' => 'Database error']);
+        exit;
+    }
+    header("Location: login.php");
+    exit;
+}
 $stmt->bind_param("i", $user_id);
 $stmt->execute();
 $result = $stmt->get_result();
 if (!$result->num_rows) {
-    error_log("Ошибка: Пользователь с ID $user_id не найден");
+    error_log("User ID $user_id not found");
+    if (isset($_GET['ajax']) && $_GET['ajax'] === 'messages') {
+        header('Content-Type: application/json');
+        echo json_encode(['error' => 'User not found']);
+        exit;
+    }
     header("Location: login.php");
-    exit();
+    exit;
 }
 $user = $result->fetch_assoc();
-$user_email = htmlspecialchars($user['email']);
+$user_username = htmlspecialchars($user['username'] ?? $user['email']);
 $user_role = $user['role'];
+$stmt->close();
 
 // Обработка отправки сообщения
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['message'])) {
-    $message = trim($_POST['message']);
-    $recipient_id = ($user_role === 'admin') ? (int)$_POST['recipient_id'] : getAdminId($conn);
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (isset($_POST['message'])) {
+        $message = trim($_POST['message']);
+        $recipient_id = $user_role === 'admin' ? (int)$_POST['recipient_id'] : getAdminId($conn);
 
-    if (!empty($message) && $recipient_id) {
-        $stmt = $conn->prepare("SELECT id FROM users WHERE id = ?");
-        $stmt->bind_param("i", $recipient_id);
-        $stmt->execute();
-        $result = $stmt->get_result();
-        if ($result->num_rows === 0) {
-            error_log("Ошибка: Получатель с ID $recipient_id не существует");
-            exit("Ошибка: Получатель не существует");
-        }
+        if ($message && $recipient_id) {
+            $stmt = $conn->prepare("SELECT id FROM users WHERE id = ?");
+            $stmt->bind_param("i", $recipient_id);
+            $stmt->execute();
+            if (!$stmt->get_result()->num_rows) {
+                error_log("Recipient ID $recipient_id does not exist");
+                header('Content-Type: application/json');
+                echo json_encode(['error' => 'Recipient not found']);
+                exit;
+            }
+            $stmt->close();
 
-        $stmt = $conn->prepare("INSERT INTO chat_messages (sender_id, recipient_id, message) VALUES (?, ?, ?)");
-        $stmt->bind_param("iis", $user_id, $recipient_id, $message);
-        if ($stmt->execute()) {
-            error_log("Сообщение успешно сохранено: sender_id=$user_id, recipient_id=$recipient_id, message=$message");
+            $stmt = $conn->prepare("INSERT INTO chat_messages (sender_id, recipient_id, message) VALUES (?, ?, ?)");
+            if (!$stmt) {
+                error_log("Prepare failed for message insert: " . $conn->error);
+                header('Content-Type: application/json');
+                echo json_encode(['error' => 'Database error']);
+                exit;
+            }
+            $stmt->bind_param("iis", $user_id, $recipient_id, $message);
+            if ($stmt->execute()) {
+                $update_stmt = $conn->prepare("UPDATE users SET last_activity = NOW() WHERE id = ?");
+                $update_stmt->bind_param("i", $user_id);
+                $update_stmt->execute();
+                $update_stmt->close();
+
+                error_log("Message saved: sender_id=$user_id, recipient_id=$recipient_id");
+                if (strtolower($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') === 'xmlhttprequest') {
+                    header('Content-Type: application/json');
+                    echo json_encode([
+                        'success' => true,
+                        'message' => [
+                            'id' => $stmt->insert_id,
+                            'sender_id' => $user_id,
+                            'message' => htmlspecialchars($message),
+                            'created_at' => date('H:i')
+                        ]
+                    ]);
+                    exit;
+                }
+            } else {
+                error_log("Message save error: " . $stmt->error);
+                header('Content-Type: application/json');
+                echo json_encode(['error' => 'Message save failed']);
+                exit;
+            }
+            $stmt->close();
         } else {
-            error_log("Ошибка сохранения сообщения: " . $stmt->error);
-            exit("Ошибка сохранения сообщения: " . $stmt->error);
+            error_log("Empty message or invalid recipient_id ($recipient_id)");
+            header('Content-Type: application/json');
+            echo json_encode(['error' => 'Empty message or invalid recipient']);
+            exit;
         }
-        $stmt->close();
-    } else {
-        error_log("Ошибка: Пустое сообщение или неверный recipient_id ($recipient_id)");
-        exit("Ошибка: Пустое сообщение или неверный получатель");
     }
 
-    // Если запрос AJAX, возвращаем JSON
-    if (!empty($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) === 'xmlhttprequest') {
-        header('Content-Type: application/json');
-        echo json_encode(['success' => true]);
-        exit();
-    }
+    if (isset($_FILES['file_upload'])) {
+        $allowed_types = ['image/jpeg', 'image/png', 'image/gif', 'application/pdf', 'text/plain'];
+        $max_size = 5 * 1024 * 1024;
 
-    header("Location: chat.php" . ($user_role === 'admin' && $recipient_id ? "?user_id=$recipient_id" : ""));
-    exit();
+        if (in_array($_FILES['file_upload']['type'], $allowed_types) && $_FILES['file_upload']['size'] <= $max_size) {
+            $file_ext = pathinfo($_FILES['file_upload']['name'], PATHINFO_EXTENSION);
+            $file_name = uniqid('file_') . '.' . $file_ext;
+            $file_path = 'Uploads/chat_files/' . $file_name;
+
+            if (!is_dir('Uploads/chat_files')) {
+                mkdir('Uploads/chat_files', 0755, true);
+            }
+
+            if (move_uploaded_file($_FILES['file_upload']['tmp_name'], $file_path)) {
+                $recipient_id = $user_role === 'admin' ? (int)$_POST['recipient_id'] : getAdminId($conn);
+                $stmt = $conn->prepare("INSERT INTO chat_messages (sender_id, recipient_id, message, attachment) VALUES (?, ?, ?, ?)");
+                if (!$stmt) {
+                    error_log("Prepare failed for file insert: " . $conn->error);
+                    header('Content-Type: application/json');
+                    echo json_encode(['error' => 'Database error']);
+                    exit;
+                }
+                $message = "File attached: " . $_FILES['file_upload']['name'];
+                $stmt->bind_param("iiss", $user_id, $recipient_id, $message, $file_path);
+                if ($stmt->execute()) {
+                    $stmt->close();
+                    header('Content-Type: application/json');
+                    echo json_encode([
+                        'success' => true,
+                        'file_url' => $file_path,
+                        'file_name' => $_FILES['file_upload']['name']
+                    ]);
+                    exit;
+                } else {
+                    error_log("File save error: " . $stmt->error);
+                    header('Content-Type: application/json');
+                    echo json_encode(['error' => 'File save failed']);
+                    exit;
+                }
+            } else {
+                error_log("File upload failed for: " . $_FILES['file_upload']['name']);
+                header('Content-Type: application/json');
+                echo json_encode(['error' => 'File upload failed']);
+                exit;
+            }
+        } else {
+            error_log("Invalid file type or size for: " . $_FILES['file_upload']['name']);
+            header('Content-Type: application/json');
+            echo json_encode(['error' => 'Invalid file type or size']);
+            exit;
+        }
+    }
 }
 
-// Функция для получения ID админа
 function getAdminId($conn) {
     $stmt = $conn->prepare("SELECT id FROM users WHERE role = 'admin' LIMIT 1");
-    $stmt->execute();
-    $result = $stmt->get_result();
-    $admin = $result->fetch_assoc();
-    if (!$admin) {
-        error_log("Ошибка: Админ не найден в базе данных");
+    if (!$stmt) {
+        error_log("Prepare failed for getAdminId: " . $conn->error);
         return null;
     }
-    return $admin['id'];
+    $stmt->execute();
+    $result = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+    if (!$result) {
+        error_log("Admin not found in database");
+        return null;
+    }
+    return $result['id'];
 }
 
 // Получение сообщений
 $messages = [];
-$selected_user_id = isset($_GET['user_id']) ? (int)$_GET['user_id'] : 0;
+$selected_user_id = (int)($_GET['user_id'] ?? 0);
 
 if ($user_role === 'admin' && $selected_user_id) {
-    $stmt = $conn->prepare("SELECT cm.*, u.email AS sender_email 
+    $update_stmt = $conn->prepare("UPDATE chat_messages SET is_read = 1 WHERE sender_id = ? AND recipient_id = ?");
+    if (!$update_stmt) {
+        error_log("Prepare failed for update read status: " . $conn->error);
+    } else {
+        $update_stmt->bind_param("ii", $selected_user_id, $user_id);
+        $update_stmt->execute();
+        $update_stmt->close();
+    }
+
+    $stmt = $conn->prepare("SELECT cm.*, u.username 
                            FROM chat_messages cm 
                            JOIN users u ON cm.sender_id = u.id 
-                           WHERE cm.sender_id = ? OR cm.recipient_id = ? 
+                           WHERE (cm.sender_id = ? AND cm.recipient_id = ?) 
+                           OR (cm.sender_id = ? AND cm.recipient_id = ?)
                            ORDER BY cm.created_at ASC");
-    $stmt->bind_param("ii", $selected_user_id, $selected_user_id);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    $messages = $result->fetch_all(MYSQLI_ASSOC);
-    error_log("Админ: Загружено " . count($messages) . " сообщений для user_id=$selected_user_id");
+    if (!$stmt) {
+        error_log("Prepare failed for messages query: " . $conn->error);
+    } else {
+        $stmt->bind_param("iiii", $selected_user_id, $user_id, $user_id, $selected_user_id);
+        $stmt->execute();
+        $messages = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+        $stmt->close();
+        error_log("Admin: Loaded " . count($messages) . " messages for user_id=$selected_user_id");
+    }
 } elseif ($user_role !== 'admin') {
-    $stmt = $conn->prepare("SELECT cm.*, u.email AS sender_email 
-                           FROM chat_messages cm 
-                           JOIN users u ON cm.sender_id = u.id 
-                           JOIN users admins ON admins.id = cm.sender_id OR admins.id = cm.recipient_id 
-                           WHERE (cm.sender_id = ? OR cm.recipient_id = ?) 
-                           AND admins.role = 'admin' 
-                           ORDER BY cm.created_at ASC");
-    $stmt->bind_param("ii", $user_id, $user_id);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    $messages = $result->fetch_all(MYSQLI_ASSOC);
-    error_log("Пользователь: Загружено " . count($messages) . " сообщений для user_id=$user_id");
+    $admin_id = getAdminId($conn);
+    if ($admin_id) {
+        $update_stmt = $conn->prepare("UPDATE chat_messages SET is_read = 1 WHERE sender_id = ? AND recipient_id = ?");
+        if (!$update_stmt) {
+            error_log("Prepare failed for update read status: " . $conn->error);
+        } else {
+            $update_stmt->bind_param("ii", $admin_id, $user_id);
+            $update_stmt->execute();
+            $update_stmt->close();
+        }
+
+        $stmt = $conn->prepare("SELECT cm.*, u.username 
+                               FROM chat_messages cm 
+                               JOIN users u ON cm.sender_id = u.id 
+                               WHERE (cm.sender_id = ? AND cm.recipient_id = ?) 
+                               OR (cm.sender_id = ? AND cm.recipient_id = ?)
+                               ORDER BY cm.created_at ASC");
+        if (!$stmt) {
+            error_log("Prepare failed for messages query: " . $conn->error);
+        } else {
+            $stmt->bind_param("iiii", $user_id, $admin_id, $admin_id, $user_id);
+            $stmt->execute();
+            $messages = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+            $stmt->close();
+            error_log("User: Loaded " . count($messages) . " messages for user_id=$user_id");
+        }
+    }
 }
 
-// Получение списка пользователей для админа
+// Получение списка пользователей
 $users = [];
 if ($user_role === 'admin') {
-    $stmt = $conn->prepare("SELECT id, email FROM users WHERE role = 'user'");
+    $stmt = $conn->prepare("SELECT u.id, u.username, u.last_activity, 
+                           (SELECT COUNT(*) FROM chat_messages WHERE sender_id = u.id AND recipient_id = ? AND is_read = 0) as unread_count
+                           FROM users u 
+                           WHERE u.id != ? 
+                           ORDER BY u.last_activity DESC");
+    if (!$stmt) {
+        error_log("Prepare failed for users query: " . $conn->error);
+    } else {
+        $stmt->bind_param("ii", $user_id, $user_id);
+        $stmt->execute();
+        $users = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+        $stmt->close();
+    }
+} else {
+    $stmt = $conn->prepare("SELECT u.id, u.username, u.last_activity,
+                           (SELECT COUNT(*) FROM chat_messages WHERE sender_id = u.id AND recipient_id = ? AND is_read = 0) as unread_count
+                           FROM users u 
+                           WHERE u.role = 'admin'");
+    if (!$stmt) {
+        error_log("Prepare failed for users query: " . $conn->error);
+    } else {
+        $stmt->bind_param("i", $user_id);
+        $stmt->execute();
+        $users = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+        $stmt->close();
+    }
+}
+
+// AJAX-запрос для сообщений
+if (isset($_GET['ajax']) && $_GET['ajax'] === 'messages') {
+    error_log("AJAX request for messages, user_id: " . ($_GET['user_id'] ?? 'none'));
+    ob_clean(); // Clear any previous output
+    header('Content-Type: application/json');
+
+    // Validate user_id
+    $selected_user_id = (int)($_GET['user_id'] ?? 0);
+    if (!$selected_user_id) {
+        echo json_encode(['error' => 'Invalid user ID']);
+        exit;
+    }
+
+    // Verify recipient exists
+    $stmt = $conn->prepare("SELECT id FROM users WHERE id = ?");
+    if (!$stmt) {
+        error_log("Prepare failed for user check: " . $conn->error);
+        echo json_encode(['error' => 'Database error']);
+        exit;
+    }
+    $stmt->bind_param("i", $selected_user_id);
     $stmt->execute();
-    $users = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    if (!$stmt->get_result()->num_rows) {
+        $stmt->close();
+        echo json_encode(['error' => 'Recipient not found']);
+        exit;
+    }
+    $stmt->close();
+
+    // Return messages
+    echo json_encode([
+        'messages' => array_map(function($msg) use ($user_id) {
+            $msg['is_sent'] = $msg['sender_id'] == $user_id;
+            $msg['time'] = date('H:i', strtotime($msg['created_at']));
+            return $msg;
+        }, $messages)
+    ]);
+    exit;
 }
 ?>
 
@@ -127,617 +324,797 @@ if ($user_role === 'admin') {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Чат</title>
-    <link href="https://fonts.googleapis.com/css2?family=Material+Icons+Outlined" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <title><?= $user_role === 'admin' ? 'Админ-чат' : 'Чат поддержки' ?></title>
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
     <style>
         :root {
-            --bg-color: #e0f2ff;
-            --chat-bg: #ffffff;
-            --text-color: #0a2540;
-            --sent-bg: #3b82f6;
-            --received-bg: #dbeafe;
-            --accent-color: #2563eb;
-            --border-color: #bfdbfe;
-            --shadow: 0 4px 20px rgba(59, 130, 246, 0.15);
-            --hover-bg: #e0f2ff;
-            --transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            --primary-color: #6200EA;
+            --primary-dark: #3700B3;
+            --light-bg: #FFFFFF;
+            --lighter-bg: #F5F5F5;
+            --dark-text: #212121;
+            --darker-text: #757575;
+            --border-color: #E0E0E0;
+            --success-color: #4CAF50;
+            --online-status: #4CAF50;
+            --offline-status: #F44336;
+            --away-status: #FFC107;
+            --transition: all 0.3s ease;
+            --shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
         }
 
-        .loader {
-            position: fixed;
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+       body {
+    font-family: 'Roboto', sans-serif;
+    background-image: url('https://images.unsplash.com/photo-1507525428034-b723cf961d3e');
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+    color: var(--dark-text);
+    height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    overflow: hidden;
+}
+
+        .app-container {
+            display: flex;
+            height: 80vh;
+            width: 80%;
+            max-width: 1000px;
+            background-color: var(--light-bg);
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: var(--shadow);
+            position: relative;
+        }
+
+        .loading-screen {
+            position: absolute;
             top: 0;
             left: 0;
             width: 100%;
-            height: 100vh;
+            height: 100%;
+            background-color: var(--light-bg);
             display: flex;
             flex-direction: column;
-            justify-content: center;
             align-items: center;
-            background-color: #f0f0f0;
-            z-index: 9999;
+            justify-content: center;
+            z-index: 1000;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.3s ease, visibility 0.3s ease;
         }
 
-        .spinner {
+        .loading-screen.active {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .loader {
+            border: 4px solid var(--lighter-bg);
+            border-top: 4px solid var(--primary-color);
+            border-radius: 50%;
             width: 40px;
             height: 40px;
-            border: 5px solid #3498db;
-            border-top-color: transparent;
-            border-radius: 50%;
             animation: spin 1s linear infinite;
         }
 
         @keyframes spin {
-            to { transform: rotate(360deg); }
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
         }
 
-        #content {
-            display: none;
-            opacity: 0;
-            transition: opacity 0.5s ease-in-out;
-        }
-
-        #content.loaded {
-            display: block;
-            opacity: 1;
-        }
-
-        /* Остальные стили без изменений */
-        body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-            line-height: 1.6;
-            background: linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.3)),
-                        url('https://images.unsplash.com/photo-1506929562872-bb421503ef21?ixlib=rb-1.2.1&auto=format&fit=crop&w=1350&q=80');
-            background-size: cover;
-            background-position: center;
-            background-attachment: fixed;
-            color: white;
-            min-height: 100vh;
-        }
-
-        .chat-container {
+        .loading-text {
             margin-top: 10px;
-            max-width: 1000px;
-            margin-left: auto;
-            margin-right: auto;
-            padding: 24px;
-            background: var(--chat-bg);
-            border-radius: 16px;
-            box-shadow: var(--shadow);
-            animation: slideIn 0.5s ease-out;
+            font-size: 14px;
+            color: var(--dark-text);
         }
 
-        .chat-header {
+        .sidebar {
+            width: 250px;
+            background-color: var(--lighter-bg);
+            border-right: 1px solid var(--border-color);
             display: flex;
-            align-items: center;
-            gap: 12px;
-            color: rgb(0, 67, 202);
-            margin-bottom: 24px;
-            padding-bottom: 12px;
+            flex-direction: column;
+        }
+
+        .sidebar-header {
+            padding: 10px;
+            background-color: var(--light-bg);
             border-bottom: 1px solid var(--border-color);
         }
 
-        .chat-header h2 {
-            margin: 0;
-            font-size: 1.75rem;
-            font-weight: 600;
-            color: rgb(0, 67, 202);
-        }
-
-        .user-select select {
-            width: 100%;
-            padding: 12px 16px;
-            border: 1px solid var(--border-color);
-            border-radius: 8px;
-            background: var(--chat-bg);
-            color: black;
-            font-size: 1rem;
+        .user-name {
             font-weight: 500;
-            cursor: pointer;
-            transition: var(--transition);
+            font-size: 14px;
         }
 
-        .user-select select:focus {
+        .user-status {
+            font-size: 10px;
+            color: var(--darker-text);
+            display: flex;
+            align-items: center;
+            gap: 3px;
+        }
+
+        .status-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background-color: var(--online-status);
+        }
+
+        .sidebar-search {
+            padding: 8px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .search-input {
+            width: 100%;
+            padding: 6px 10px;
+            background-color: var(--light-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            color: var(--dark-text);
+            font-size: 12px;
+        }
+
+        .search-input:focus {
             outline: none;
-            border-color: var(--accent-color);
-            box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+            background-color: var(--lighter-bg);
+            border-color: var(--primary-color);
+        }
+
+        .conversation-list {
+            flex-grow: 1;
+            overflow-y: auto;
+            scrollbar-width: thin;
+            scrollbar-color: var(--primary-color) var(--lighter-bg);
+        }
+
+        .conversation-list::-webkit-scrollbar {
+            width: 5px;
+        }
+
+        .conversation-list::-webkit-scrollbar-track {
+            background: var(--lighter-bg);
+        }
+
+        .conversation-list::-webkit-scrollbar-thumb {
+            background-color: var(--primary-color);
+            border-radius: 3px;
+        }
+
+        .conversation-item {
+            padding: 8px;
+            cursor: pointer;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .conversation-item:hover {
+            background-color: var(--light-bg);
+        }
+
+        .conversation-item.active {
+            background-color: var(--lighter-bg);
+        }
+
+        .conversation-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 3px;
+        }
+
+        .conversation-name {
+            font-weight: 500;
+            font-size: 13px;
+        }
+
+        .conversation-time {
+            font-size: 10px;
+            color: var(--darker-text);
+        }
+
+        .conversation-preview {
+            font-size: 11px;
+            color: var(--darker-text);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .unread-badge {
+            float: right;
+            background-color: var(--primary-color);
+            color: white;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+        }
+
+        .chat-area {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            background-color: var(--light-bg);
+        }
+
+        .chat-header {
+            padding: 8px 10px;
+            background-color: var(--lighter-bg);
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+        }
+
+        .chat-back-btn {
+            display: none;
+            background: none;
+            border: none;
+            color: var(--dark-text);
+            cursor: pointer;
+            font-size: 18px;
+        }
+
+        .chat-user-info {
+            flex-grow: 1;
+        }
+
+        .chat-user-name {
+            font-weight: 500;
+            font-size: 14px;
+        }
+
+        .chat-user-status {
+            font-size: 10px;
+            color: var(--darker-text);
+            display: flex;
+            align-items: center;
+            gap: 3px;
         }
 
         .chat-messages {
-            height: 550px;
+            flex-grow: 1;
+            padding: 10px;
             overflow-y: auto;
-            padding: 16px;
-            background: var(--chat-bg);
-            border-radius: 12px;
-            border: 1px solid var(--border-color);
-            margin-bottom: 24px;
-            scroll-behavior: smooth;
+            scrollbar-width: thin;
+            scrollbar-color: var(--primary-color) var(--light-bg);
         }
 
         .chat-messages::-webkit-scrollbar {
-            width: 8px;
+            width: 5px;
         }
 
         .chat-messages::-webkit-scrollbar-track {
-            background: var(--bg-color);
+            background: var(--light-bg);
         }
 
         .chat-messages::-webkit-scrollbar-thumb {
-            background: var(--accent-color);
-            border-radius: 4px;
+            background-color: var(--primary-color);
+            border-radius: 3px;
         }
 
-        .message {
+        .message-container {
             display: flex;
-            margin: 12px 0;
-            animation: messageFadeIn 0.4s ease-out;
+            margin-bottom: 8px;
         }
 
-        .message.sent {
+        .message-container.sent {
             justify-content: flex-end;
         }
 
-        .message.received {
+        .message-container.received {
             justify-content: flex-start;
         }
 
         .message-content {
             max-width: 70%;
-            padding: 12px 16px;
-            border-radius: 16px;
-            background: var(--received-bg);
-            color: rgb(0, 0, 0);
-            position: relative;
+        }
+
+        .message-bubble {
+            padding: 8px 12px;
+            border-radius: 12px;
+            word-wrap: break-word;
             box-shadow: var(--shadow);
-            transition: transform 0.2s ease;
         }
 
-        .message-content:hover {
-            transform: translateY(-2px);
-        }
-
-        .message.sent .message-content {
-            background: var(--sent-bg);
-            color: #ffffff;
+        .message-container.sent .message-bubble {
+            background-color: var(--primary-color);
+            color: white;
             border-bottom-right-radius: 4px;
         }
 
-        .message.received .message-content {
+        .message-container.received .message-bubble {
+            background-color: var(--lighter-bg);
+            color: var(--dark-text);
             border-bottom-left-radius: 4px;
         }
 
-        .message .sender {
-            font-size: 0.9rem;
-            font-weight: 500;
-            margin-bottom: 4px;
-            color: var(--text-color);
-            opacity: 0.8;
-        }
-
-        .message .content {
-            font-size: 1rem;
-            line-height: 1.5;
-        }
-
-        .message .timestamp {
-            font-size: 0.8rem;
-            color: var(--text-color);
-            opacity: 0.6;
-            margin-top: 4px;
+        .message-time {
+            font-size: 10px;
+            color: var(--darker-text);
+            margin-top: 2px;
             text-align: right;
+        }
+
+        .message-status.read {
+            color: var(--success-color);
+        }
+
+        .message-file {
+            padding: 6px;
+            background-color: rgba(0, 0, 0, 0.05);
+            border-radius: 5px;
+            margin-top: 2px;
+        }
+
+        .file-link {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            color: inherit;
+            text-decoration: none;
+        }
+
+        .file-name {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            font-size: 12px;
+        }
+
+        .file-size {
+            font-size: 10px;
+            color: var(--darker-text);
+        }
+
+        .no-messages {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: var(--darker-text);
+            text-align: center;
+        }
+
+        .chat-input-container {
+            padding: 8px;
+            background-color: var(--lighter-bg);
+            border-top: 1px solid var(--border-color);
         }
 
         .message-form {
             display: flex;
-            gap: 12px;
-            background: var(--chat-bg);
-            padding: 12px;
-            border-radius: 12px;
-            border: 1px solid var(--border-color);
-            box-shadow: var(--shadow);
+            align-items: center;
+            gap: 6px;
         }
 
-        .message-form input[type="text"] {
+        .message-input {
             flex-grow: 1;
-            padding: 12px 16px;
-            border: none;
-            border-radius: 8px;
-            background: var(--bg-color);
-            color: var(--text-color);
-            font-size: 1rem;
+            padding: 8px 12px;
+            background-color: var(--light-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            color: var(--dark-text);
+            font-size: 13px;
             resize: none;
-            min-height: 48px;
-            max-height: 120px;
-            overflow-y: auto;
-            transition: var(--transition);
+            max-height: 80px;
         }
 
-        .message-form input[type="text"]:focus {
+        .message-input:focus {
             outline: none;
-            background: var(--chat-bg);
-            box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+            background-color: var(--lighter-bg);
+            border-color: var(--primary-color);
         }
 
-        .message-form button {
-            padding: 12px 24px;
-            background: var(--accent-color);
-            color: rgb(0, 0, 0);
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            font-weight: 500;
-            font-size: 1rem;
-            transition: var(--transition);
-        }
-
-        .message-form button:hover {
-            background: #4338ca;
-            transform: translateY(-1px);
-        }
-
-        .message-form button:active {
-            transform: translateY(0);
-        }
-
-        .no-user-selected {
-            text-align: center;
-            color: var(--text-color);
-            padding: 24px;
-            font-size: 1.1rem;
-            opacity: 0.7;
-            animation: fadeIn 0.5s ease-out;
-        }
-
-        .theme-toggle {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            z-index: 1001;
-        }
-
-        .theme-toggle button {
-            padding: 12px;
-            background: var(--accent-color);
-            color: #ffffff;
+        .send-btn {
+            background-color: var(--primary-color);
             border: none;
             border-radius: 50%;
-            cursor: pointer;
-            box-shadow: var(--shadow);
-            transition: var(--transition);
-        }
-
-        .theme-toggle button:hover {
-            background: #4338ca;
-            transform: rotate(15deg);
-        }
-
-        @keyframes slideIn {
-            from { opacity: 0; transform: translateY(20px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        @keyframes messageFadeIn {
-            from { opacity: 0; transform: scale(0.95); }
-            to { opacity: 1; transform: scale(1); }
-        }
-
-        @keyframes fadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
-        }
-
-        @media (max-width: 600px) {
-            .chat-container {
-                margin-top: 60px;
-                padding: 16px;
-                border-radius: 12px;
-            }
-
-            .chat-messages {
-                height: 450px;
-            }
-
-            .message-content {
-                max-width: 85%;
-            }
-
-            .message-form {
-                flex-direction: column;
-                gap: 8px;
-            }
-
-            .message-form input[type="text"] {
-                width: 100%;
-            }
-
-            .message-form button {
-                width: 100%;
-                padding: 12px;
-            }
-
-            .chat-header h2 {
-                font-size: 1.5rem;
-            }
-
-            .theme-toggle {
-                top: 12px;
-                right: 12px;
-            }
-        }
-
-        .chat-disclaimer {
-            display: flex;
-            align-items: flex-start;
-            background: linear-gradient(135deg, #F7F9FC, #E6F0FA);
-            border-radius: 12px;
-            padding: 16px;
-            margin-bottom: 16px;
-            border-left: 4px solid var(--accent-color);
-            box-shadow: var(--shadow);
-            animation: slideIn 0.5s ease-out;
-            transition: transform 0.3s ease;
-        }
-
-        [data-theme="dark"] .chat-disclaimer {
-            background: linear-gradient(135deg, #374151, #4b5563);
-            border-left-color: var(--accent-color);
-        }
-
-        .chat-disclaimer:hover {
-            transform: translateY(-2px);
-        }
-
-        .disclaimer-icon {
-            width: 40px;
-            height: 40px;
-            background: var(--accent-color);
-            border-radius: 50%;
+            width: 36px;
+            height: 36px;
             display: flex;
             align-items: center;
             justify-content: center;
-            color: #ffffff;
-            font-size: 20px;
-            margin-right: 16px;
-            flex-shrink: 0;
-            animation: pulse 2s infinite;
+            cursor: pointer;
+            color: white;
         }
 
-        [data-theme="dark"] .disclaimer-icon {
-            background: var(--accent-color);
+        .send-btn:hover {
+            background-color: var(--primary-dark);
         }
 
-        @keyframes pulse {
-            0% { transform: scale(1); }
-            50% { transform: scale(1.1); }
-            100% { transform: scale(1); }
+        .send-btn:disabled {
+            background-color: var(--darker-text);
+            cursor: not-allowed;
         }
 
-        .disclaimer-content {
-            flex: 1;
+        .file-input {
+            display: none;
         }
 
-        .disclaimer-content p {
-            margin: 0;
-            font-size: 0.9rem;
-            color: var(--text-color);
-            line-height: 1.5;
-        }
-
-        [data-theme="dark"] .disclaimer-content p {
-            color: #e5e7eb;
-        }
-
-        .disclaimer-content strong {
-            font-weight: 600;
-        }
-
-        .disclaimer-content a {
-            color: var(--accent-color);
-            text-decoration: none;
-            font-weight: 600;
-            transition: color 0.3s ease;
-        }
-
-        .disclaimer-content a:hover {
-            color: #4338ca;
-        }
-
-        @media (max-width: 600px) {
-            .chat-disclaimer {
-                flex-direction: column;
-                align-items: center;
-                text-align: center;
-                padding: 12px;
+        @media (max-width: 768px) {
+            .sidebar {
+                position: absolute;
+                left: 0;
+                top: 0;
+                bottom: 0;
+                z-index: 100;
+                width: 100%;
+                transform: translateX(-100%);
+                transition: var(--transition);
             }
 
-            .disclaimer-icon {
-                margin-right: 0;
-                margin-bottom: 12px;
+            .sidebar.active {
+                transform: translateX(0);
+            }
+
+            .chat-back-btn {
+                display: block;
+            }
+
+            .chat-area {
+                width: 100%;
+            }
+
+            .app-container {
+                width: 100%;
+                height: 100vh;
+                max-width: none;
             }
         }
     </style>
 </head>
 <body>
-    <div id="loader" class="loader">
-        <div class="spinner"></div>
-        <p>Загрузка...</p>
-    </div>
-
-    <div id="content">
-        <?php include 'navbar.php'; ?>
-        <div class="chat-container">
-            <div class="chat-header">
-                <span class="material-icons-outlined">chat</span>
-                <h2>Чат с администратором</h2>
-            </div>
-
-            <?php if ($user_role === 'admin'): ?>
-                <div class="user-select">
-                    <select onchange="location.href='chat.php?user_id='+this.value">
-                        <option value="">Выберите пользователя</option>
-                        <?php foreach ($users as $u): ?>
-                            <option value="<?= $u['id'] ?>" <?= $selected_user_id == $u['id'] ? 'selected' : '' ?>>
-                                <?= htmlspecialchars($u['email']) ?>
-                            </option>
-                        <?php endforeach; ?>
-                    </select>
+    <div class="app-container">
+        <div class="loading-screen" id="loading-screen">
+            <div class="loader"></div>
+            <div class="loading-text">Загрузка...</div>
+        </div>
+        <div class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <div class="user-name"><?= $user_username ?></div>
+                <div class="user-status">
+                    <span class="status-dot"></span>
+                    <span>Online</span>
                 </div>
-            <?php endif; ?>
-
-            <div class="chat-messages" id="chat-messages">
-                <?php if ($user_role === 'admin' && !$selected_user_id): ?>
-                    <div class="no-user-selected">Выберите пользователя для просмотра сообщений</div>
-                <?php elseif (empty($messages) && $user_role !== 'admin'): ?>
-                    <div class="no-user-selected">Нет сообщений в чате</div>
+            </div>
+            <div class="sidebar-search">
+                <input type="text" class="search-input" placeholder="Поиск...">
+            </div>
+            <div class="conversation-list">
+                <?php if (empty($users)): ?>
+                    <div style="padding: 10px; text-align: center; color: var(--darker-text);">Нет чатов</div>
                 <?php else: ?>
-                    <?php foreach ($messages as $msg): ?>
-                        <div class="message <?= $msg['sender_id'] == $user_id ? 'sent' : 'received' ?>">
-                            <div class="message-content">
-                                <div class="sender"><?= htmlspecialchars($msg['sender_email']) ?></div>
-                                <div class="content"><?= htmlspecialchars($msg['message']) ?></div>
-                                <div class="timestamp"><?= $msg['created_at'] ?></div>
+                    <?php foreach ($users as $u): 
+                        $last_message = getLastMessage($conn, $user_id, $u['id']);
+                        $unread_count = $u['unread_count'] ?? 0;
+                    ?>
+                        <div class="conversation-item <?= $selected_user_id == $u['id'] ? 'active' : '' ?>" 
+                             data-user-id="<?= $u['id'] ?>"
+                             onclick="loadChat(<?= $u['id'] ?>, '<?= htmlspecialchars($u['username'] ?? $u['email']) ?>')">
+                            <div class="conversation-header">
+                                <div class="conversation-name"><?= htmlspecialchars($u['username'] ?? $u['email']) ?></div>
+                                <div class="conversation-time"><?= $last_message ? formatTime($last_message['created_at']) : '' ?></div>
+                            </div>
+                            <div class="conversation-preview">
+                                <?php if ($last_message): ?>
+                                    <?= $last_message['sender_id'] == $user_id ? '<i class="material-icons">done_all</i>' : '' ?>
+                                    <?= htmlspecialchars(mb_strlen($last_message['message']) > 30 ? mb_substr($last_message['message'], 0, 30) . '...' : $last_message['message']) ?>
+                                <?php else: ?>
+                                    Нет сообщений
+                                <?php endif; ?>
+                                <?php if ($unread_count > 0): ?>
+                                    <div class="unread-badge"><?= $unread_count ?></div>
+                                <?php endif; ?>
                             </div>
                         </div>
                     <?php endforeach; ?>
                 <?php endif; ?>
             </div>
+        </div>
 
-            <?php if ($user_role !== 'admin' || $selected_user_id): ?>
-                <div class="chat-disclaimer">
-                    <div class="disclaimer-icon">
-                        <span class="material-icons-outlined">info</span>
-                    </div>
-                    <div class="disclaimer-content">
-                        <p><strong>Важно</strong>: Переписка в чате сохраняется и может быть использована для разрешения споров или уточнения деталей. Пожалуйста, будьте внимательны при отправке сообщений. Если у вас есть вопросы, свяжитесь с поддержкой: <a href="tel:+74951234567">+7 (495) 123-4567</a> или <a href="mailto:support@itravel.com">support@itravel.com</a>.</p>
+        <div class="chat-area">
+            <?php if ($user_role === 'admin' && !$selected_user_id): ?>
+                <div class="no-messages">
+                    <h3>Выберите чат</h3>
+                    <p>Выберите пользователя слева</p>
+                </div>
+            <?php else: ?>
+                <div class="chat-header">
+                    <button class="chat-back-btn" onclick="toggleSidebar()">
+                        <i class="material-icons">menu</i>
+                    </button>
+                    <div class="chat-user-info">
+                        <?php
+                        $chat_user = null;
+                        if ($user_role === 'admin' && $selected_user_id) {
+                            $stmt = $conn->prepare("SELECT username, last_activity FROM users WHERE id = ?");
+                            $stmt->bind_param("i", $selected_user_id);
+                            $stmt->execute();
+                            $chat_user = $stmt->get_result()->fetch_assoc();
+                            $stmt->close();
+                        } elseif ($user_role !== 'admin') {
+                            $stmt = $conn->prepare("SELECT username, last_activity FROM users WHERE role = 'admin' LIMIT 1");
+                            $stmt->execute();
+                            $chat_user = $stmt->get_result()->fetch_assoc();
+                            $stmt->close();
+                        }
+                        $chat_status = getUserStatus($chat_user['last_activity'] ?? null);
+                        ?>
+                        <div class="chat-user-name"><?= htmlspecialchars($chat_user['username'] ?? $user['email'] ?? 'Пользователь') ?></div>
+                        <div class="chat-user-status">
+                            <span class="status-dot" style="background-color: <?= $chat_status['color'] ?>;"></span>
+                            <span><?= $chat_status['text'] ?></span>
+                        </div>
                     </div>
                 </div>
-
-                <form class="message-form" id="message-form" method="POST">
-                    <input type="text" name="message" placeholder="Введите сообщение..." required>
-                    <?php if ($user_role === 'admin' && $selected_user_id): ?>
-                        <input type="hidden" name="recipient_id" value="<?= $selected_user_id ?>">
-                        <?php error_log("recipient_id в форме: $selected_user_id"); ?>
-                    <?php endif; ?>
-                    <button type="submit">Отправить</button>
-                </form>
+                <div class="chat-messages" id="chat-messages">
+                    <?php foreach ($messages as $msg): 
+                        $is_sent = $msg['sender_id'] == $user_id;
+                        $status_icon = $is_sent && isset($msg['is_read']) && $msg['is_read'] ? 'done_all' : 'done';
+                    ?>
+                        <div class="message-container <?= $is_sent ? 'sent' : 'received' ?>">
+                            <div class="message-content">
+                                <div class="message-bubble">
+                                    <?= htmlspecialchars($msg['message']) ?>
+                                    <?php if (isset($msg['attachment'])): ?>
+                                        <a href="<?= $msg['attachment'] ?>" target="_blank" class="message-file file-link">
+                                            <div class="file-name"><?= basename($msg['attachment']) ?></div>
+                                            <div class="file-size"><?= round(filesize($msg['attachment']) / 1024, 1) ?> KB</div>
+                                        </a>
+                                    <?php endif; ?>
+                                </div>
+                                <div class="message-time">
+                                    <?= date('H:i', strtotime($msg['created_at'])) ?>
+                                    <?php if ($is_sent): ?>
+                                        <i class="material-icons message-status <?= $msg['is_read'] ? 'read' : '' ?>" style="font-size: 12px; vertical-align: middle;">
+                                            <?= $status_icon ?>
+                                        </i>
+                                    <?php endif; ?>
+                                </div>
+                            </div>
+                        </div>
+                    <?php endforeach; ?>
+                </div>
+                <div class="chat-input-container">
+                    <form class="message-form" id="message-form" method="POST" enctype="multipart/form-data">
+                        <label class="tool-btn">
+                            <i class="material-icons">attach_file</i>
+                            <input type="file" name="file_upload" class="file-input" id="file-input">
+                        </label>
+                        <textarea class="message-input" name="message" placeholder="Сообщение..."></textarea>
+                        <button type="submit" class="send-btn" id="send-btn">
+                            <i class="material-icons">send</i>
+                        </button>
+                        <input type="hidden" name="recipient_id" value="<?= $selected_user_id ?: getAdminId($conn) ?>">
+                    </form>
+                </div>
             <?php endif; ?>
         </div>
     </div>
 
     <script>
-        // Прокрутка к последнему сообщению
+    let currentUserId = <?= $selected_user_id ?: ($user_role === 'admin' ? 'null' : getAdminId($conn)) ?>;
+    let isAdmin = <?= $user_role === 'admin' ? 'true' : 'false' ?>;
+
+    function toggleSidebar() {
+        document.getElementById('sidebar').classList.toggle('active');
+    }
+
+    function showLoadingScreen() {
+        document.getElementById('loading-screen').classList.add('active');
+    }
+
+    function loadChat(userId, userName) {
+        showLoadingScreen();
+        window.location.href = `chat.php?user_id=${userId}`;
+    }
+
+    function scrollToBottom() {
         const chatMessages = document.getElementById('chat-messages');
-        chatMessages.scrollTop = chatMessages.scrollHeight;
+        if (chatMessages) {
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+    }
 
-        // Показываем контент после загрузки страницы
-        document.addEventListener('DOMContentLoaded', function() {
-            const loader = document.getElementById('loader');
-            const content = document.getElementById('content');
-            if (loader && content) {
-                loader.style.display = 'none';
-                content.style.display = 'block';
-                content.classList.add('loaded');
-                chatMessages.scrollTop = chatMessages.scrollHeight;
+    function fetchMessages(userId) {
+        if (!userId) return;
+        
+        fetch(`chat.php?ajax=messages&user_id=${userId}&_=${Date.now()}`, {
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest'
             }
-        });
-
-        // Обработка отправки формы через AJAX
-        document.getElementById('message-form')?.addEventListener('submit', function(e) {
-            e.preventDefault();
-            const loader = document.getElementById('loader');
-            const content = document.getElementById('content');
-            loader.style.display = 'flex';
-            content.style.display = 'none';
-
-            const formData = new FormData(this);
-            const messageInput = this.querySelector('input[name="message"]');
-
-            fetch('chat.php', {
-                method: 'POST',
-                body: formData
-            })
+        })
             .then(response => {
                 if (!response.ok) {
-                    throw new Error('Ошибка сети: ' + response.status);
+                    throw new Error(`HTTP error! status: ${response.status}`);
                 }
                 return response.json();
             })
             .then(data => {
-                loader.style.display = 'none';
-                content.style.display = 'block';
-                content.classList.add('loaded');
-                if (data.success) {
-                    messageInput.value = ''; // Очищаем поле ввода
-                    updateMessages(); // Обновляем сообщения
-                } else {
-                    alert('Ошибка отправки сообщения');
+                const chatMessages = document.getElementById('chat-messages');
+                if (!chatMessages) return;
+                
+                if (data.error) {
+                    console.error('Server error:', data.error);
+                    return;
                 }
-            })
-            .catch(error => {
-                loader.style.display = 'none';
-                content.style.display = 'block';
-                content.classList.add('loaded');
-                console.error('Ошибка AJAX:', error);
-                alert('Произошла ошибка при отправке сообщения: ' + error.message);
-            });
-        });
 
-        // Асинхронное обновление сообщений
-        function updateMessages() {
-            const loader = document.getElementById('loader');
-            const content = document.getElementById('content');
-            loader.style.display = 'flex';
-            content.style.display = 'none';
-
-            fetch('get_messages.php?user_id=<?= $user_role === 'admin' && $selected_user_id ? $selected_user_id : $user_id ?>')
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error('Ошибка сети: ' + response.status);
-                    }
-                    return response.json();
-                })
-                .then(data => {
-                    loader.style.display = 'none';
-                    content.style.display = 'block';
-                    content.classList.add('loaded');
-                    const chatMessages = document.getElementById('chat-messages');
-                    chatMessages.innerHTML = data.messages.length === 0
-                        ? '<div class="no-user-selected">Нет сообщений в чате</div>'
-                        : data.messages.map(msg => `
-                            <div class="message ${msg.sender_id == <?= $user_id ?> ? 'sent' : 'received'}">
-                                <div class="message-content">
-                                    <div class="sender">${escapeHtml(msg.sender_email)}</div>
-                                    <div class="content">${escapeHtml(msg.message)}</div>
-                                    <div class="timestamp">${msg.created_at}</div>
+                if (data.messages.length === 0) {
+                    chatMessages.innerHTML = '<div class="no-messages"><h3>Нет сообщений</h3><p>Начните общение</p></div>';
+                } else {
+                    chatMessages.innerHTML = data.messages.map(msg => `
+                        <div class="message-container ${msg.is_sent ? 'sent' : 'received'}">
+                            <div class="message-content">
+                                <div class="message-bubble">
+                                    ${msg.message}
+                                    ${msg.attachment ? `<a href="${msg.attachment}" target="_blank" class="message-file file-link">
+                                        <div class="file-name">${msg.attachment.split('/').pop()}</div>
+                                        <div class="file-size">${Math.round(msg.attachment_size / 1024) || 'N/A'} KB</div>
+                                    </a>` : ''}
+                                </div>
+                                <div class="message-time">
+                                    ${msg.time}
+                                    ${msg.is_sent ? `<i class="material-icons message-status ${msg.is_read ? 'read' : ''}" style="font-size: 12px; vertical-align: middle;">
+                                        ${msg.is_read ? 'done_all' : 'done'}
+                                    </i>` : ''}
                                 </div>
                             </div>
-                        `).join('');
-                    chatMessages.scrollTop = chatMessages.scrollHeight;
-                })
-                .catch(error => {
-                    loader.style.display = 'none';
-                    content.style.display = 'block';
-                    content.classList.add('loaded');
-                    console.error('Ошибка загрузки сообщений:', error);
-                    document.getElementById('loader').innerHTML = '<p style="color: red;">Ошибка загрузки сообщений. Попробуйте позже.</p>';
-                });
-        }
+                        </div>
+                    `).join('');
+                }
+                scrollToBottom();
+            })
+            .catch(error => {
+                console.error('Ошибка загрузки сообщений:', error);
+            });
+    }
 
-        // Поллинг сообщений каждые 10 секунд
-        setInterval(updateMessages, 10000);
+    // Обработчик отправки сообщения
+    document.getElementById('message-form')?.addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        const formData = new FormData(this);
+        const messageInput = this.querySelector('.message-input');
+        const sendBtn = document.getElementById('send-btn');
+        
+        if (!messageInput.value.trim() && !formData.get('file_upload').name) return;
+        
+        sendBtn.disabled = true;
+        
+        fetch('chat.php', {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (data.success) {
+                messageInput.value = '';
+                messageInput.style.height = 'auto';
+                
+                if (data.file_url) {
+                    const chatMessages = document.getElementById('chat-messages');
+                    if (chatMessages.querySelector('.no-messages')) {
+                        chatMessages.innerHTML = '';
+                    }
+                    
+                    chatMessages.insertAdjacentHTML('beforeend', `
+                        <div class="message-container sent">
+                            <div class="message-content">
+                                <div class="message-bubble">
+                                    <a href="${data.file_url}" target="_blank" class="message-file file-link">
+                                        <div class="file-name">${data.file_name}</div>
+                                    </a>
+                                </div>
+                                <div class="message-time">
+                                    ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                    <i class="material-icons message-status" style="font-size: 12px; vertical-align: middle;">done</i>
+                                </div>
+                            </div>
+                        </div>
+                    `);
+                }
+                
+                fetchMessages(currentUserId);
+            } else {
+                console.error('Ошибка отправки:', data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Ошибка:', error);
+        })
+        .finally(() => {
+            sendBtn.disabled = false;
+        });
+    });
 
-        // Экранирование HTML для безопасности
-        function escapeHtml(unsafe) {
-            if (unsafe == null) return '';
-            return unsafe
-                .toString()
-                .replace(/&/g, "&amp;")
-                .replace(/</g, "&lt;")
-                .replace(/>/g, "&gt;")
-                .replace(/"/g, "&quot;")
-                .replace(/'/g, "&#039;");
+    // Обработчик загрузки файла
+    document.getElementById('file-input')?.addEventListener('change', function() {
+        if (this.files.length > 0) {
+            document.getElementById('message-form').dispatchEvent(new Event('submit'));
         }
-    </script>
+    });
+
+    // Автоматическое увеличение высоты textarea
+    document.querySelector('.message-input')?.addEventListener('input', function() {
+        this.style.height = 'auto';
+        this.style.height = (this.scrollHeight) + 'px';
+    });
+
+    // Инициализация при загрузке
+    document.addEventListener('DOMContentLoaded', function() {
+        if (currentUserId) {
+            fetchMessages(currentUserId);
+        }
+        scrollToBottom();
+        document.getElementById('loading-screen').classList.remove('active');
+    });
+
+    // Периодическое обновление сообщений
+    setInterval(() => {
+        if (currentUserId) {
+            fetchMessages(currentUserId);
+        }
+    }, 5000);
+</script>
 </body>
 </html>
-<?php ob_end_flush(); ?>
+
+<?php
+function getLastMessage($conn, $user_id, $other_user_id) {
+    $stmt = $conn->prepare("SELECT * FROM chat_messages 
+                           WHERE (sender_id = ? AND recipient_id = ?) 
+                           OR (sender_id = ? AND recipient_id = ?) 
+                           ORDER BY created_at DESC LIMIT 1");
+    if (!$stmt) {
+        error_log("Prepare failed for getLastMessage: " . $conn->error);
+        return null;
+    }
+    $stmt->bind_param("iiii", $user_id, $other_user_id, $other_user_id, $user_id);
+    $stmt->execute();
+    $result = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
+    return $result;
+}
+
+function getUserStatus($last_activity) {
+    if (!$last_activity) return ['text' => 'Offline', 'color' => 'var(--offline-status)'];
+    $diff = time() - strtotime($last_activity);
+    if ($diff < 300) return ['text' => 'Online', 'color' => 'var(--online-status)'];
+    if ($diff < 1800) return ['text' => 'Away', 'color' => 'var(--away-status)'];
+    return ['text' => 'Offline', 'color' => 'var(--offline-status)'];
+}
+
+function formatTime($datetime) {
+    $time = strtotime($datetime);
+    $diff = time() - $time;
+    if ($diff < 86400) return date('H:i', $time);
+    if ($diff < 172800) return 'Yesterday';
+    if ($diff < 604800) return date('D', $time);
+    return date('d.m.Y', $time);
+}
+
+ob_end_flush();
+?>
